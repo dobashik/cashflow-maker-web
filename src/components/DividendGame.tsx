@@ -132,7 +132,7 @@ export function DividendGame() {
                         <motion.div
                             initial={{ scale: 0, opacity: 0 }}
                             animate={isInView ? { scale: 1, opacity: 1 } : { scale: 0, opacity: 0 }}
-                            transition={{ delay: 1.8, type: "spring", bounce: 0.5 }}
+                            transition={{ delay: 1.8, type: "spring" as const, bounce: 0.5 }}
                             className="bg-white/90 backdrop-blur-xl px-6 py-4 rounded-3xl shadow-2xl border border-white/50 text-center"
                         >
                             <div className="text-[10px] text-indigo-400 font-bold uppercase tracking-widest mb-1">Coverage</div>
