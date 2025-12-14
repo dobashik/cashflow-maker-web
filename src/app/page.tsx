@@ -1,65 +1,60 @@
-import Image from "next/image";
+import { Header } from '@/components/Header';
+import { DividendGame } from '@/components/DividendGame';
+import { PortfolioPie } from '@/components/PortfolioPie';
+import { HoldingsTable } from '@/components/HoldingsTable';
 
 export default function Home() {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
+    <main className="min-h-screen pb-20 bg-slate-50 selection:bg-indigo-100 selection:text-indigo-900">
+      <Header />
+
+      {/* Spacer for fixed header */}
+      <div className="h-24"></div>
+
+      <div className="container mx-auto px-4 space-y-12">
+
+        {/* Hero Section Text */}
+        <div className="text-center max-w-2xl mx-auto mt-8 mb-4 space-y-4">
+          <h1 className="text-4xl md:text-5xl font-black text-indigo-900 leading-tight">
+            配当金で、<br />人生の選択肢を増やそう。
           </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+          <p className="text-slate-500 text-lg leading-relaxed">
+            退屈な表計算ソフトはもう卒業。あなたの配当金が「魔法の水」となって生活費を満たしていく様子を、美しいビジュアルで管理しましょう。
           </p>
+          <button className="bg-gradient-to-r from-amber-400 to-orange-400 text-white font-bold py-3 px-8 rounded-full shadow-lg shadow-amber-200 hover:shadow-xl hover:scale-105 transition-all duration-300">
+            デモを体験する
+          </button>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+
+        {/* Hero / Game Section */}
+        <div className="w-full">
+          <DividendGame />
         </div>
-      </main>
-    </div>
+
+        {/* Dashbaord Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 max-w-6xl mx-auto">
+          <div className="flex flex-col gap-8">
+            <PortfolioPie />
+
+            {/* Decoration Card */}
+            <div className="bg-gradient-to-br from-indigo-600 to-indigo-800 rounded-3xl p-8 text-white shadow-xl relative overflow-hidden transform hover:scale-[1.02] transition-transform duration-500">
+              <div className="relative z-10">
+                <h3 className="text-2xl font-bold mb-2">Next Dividend</h3>
+                <p className="text-indigo-200 mb-6">Estimated arrival for Japan Tobacco</p>
+                <div className="text-4xl font-black">¥232,800</div>
+                <div className="mt-2 text-indigo-300">September 28, 2025</div>
+              </div>
+              {/* Decor circles */}
+              <div className="absolute -top-10 -right-10 w-40 h-40 bg-white/10 rounded-full blur-2xl animate-pulse" />
+              <div className="absolute bottom-0 left-0 w-32 h-32 bg-amber-400/20 rounded-full blur-xl" />
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-8">
+            <HoldingsTable />
+          </div>
+        </div>
+      </div>
+    </main>
   );
 }
