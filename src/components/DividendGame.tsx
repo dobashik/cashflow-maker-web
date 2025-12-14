@@ -1,14 +1,14 @@
 'use client';
 
 import { motion, useSpring, useTransform, useInView } from 'framer-motion';
-import {  Droplets, Sparkles } from 'lucide-react';
+import { Droplets, Sparkles } from 'lucide-react';
 import { EXPENSES, TOTAL_EXPENSES, MONTHLY_DIVIDEND } from '@/lib/mockData';
 import { cn } from './ui/Button';
 import { useEffect, useRef, useState } from 'react';
 
 export function DividendGame() {
     const coveragePercent = Math.min(100, Math.round((MONTHLY_DIVIDEND / TOTAL_EXPENSES) * 100));
-    
+
     // Count-up animation for percentage
     const motionValue = useSpring(0, { stiffness: 50, damping: 20 });
     const springValue = useTransform(motionValue, (value) => Math.round(value));
@@ -21,9 +21,9 @@ export function DividendGame() {
     useEffect(() => {
         if (isInView) {
             // Delay the counter slightly to match water rise
-             setTimeout(() => {
+            setTimeout(() => {
                 motionValue.set(coveragePercent);
-             }, 1000);
+            }, 1000);
         }
     }, [isInView, coveragePercent, motionValue]);
 
@@ -49,14 +49,14 @@ export function DividendGame() {
     // Falling block variant
     const blockVariants = {
         hidden: { opacity: 0, y: -200, scale: 0.8 },
-        visible: { 
-            opacity: 1, 
-            y: 0, 
+        visible: {
+            opacity: 1,
+            y: 0,
             scale: 1,
-            transition: { 
-                type: "spring", 
-                stiffness: 300, 
-                damping: 15 
+            transition: {
+                type: "spring" as const,
+                stiffness: 300,
+                damping: 15
             }
         }
     };
@@ -69,11 +69,11 @@ export function DividendGame() {
             {/* Left: The Life Tower (Expenses) */}
             <div className="md:w-1/3 flex flex-col items-center w-full z-10">
                 <h3 className="text-indigo-900 font-bold mb-1 flex items-center gap-2 text-2xl">
-                   「配当金で賄う」自由の塔
+                    「配当金で賄う」自由の塔
                 </h3>
                 <p className="text-xs font-mono text-indigo-400 mb-4 tracking-widest uppercase">Life Tower</p>
 
-                <motion.div 
+                <motion.div
                     variants={containerVariants}
                     initial="hidden"
                     animate={isInView ? "visible" : "hidden"}
@@ -107,7 +107,7 @@ export function DividendGame() {
                 <h3 className="text-indigo-900 font-bold mb-1 flex items-center gap-2 text-lg">
                     <Droplets className="w-5 h-5 text-cyan-500" /> 配当金でのカバー率
                 </h3>
-                
+
                 <div className="relative w-full max-w-[240px] h-[350px] bg-white rounded-[40px] border-4 border-indigo-50 shadow-[0_20px_60px_-12px_rgba(56,189,248,0.2)] overflow-hidden transform transition-all hover:shadow-cyan-200/50">
                     {/* Simple bubbles/sparkles background */}
                     <div className="absolute inset-0 bg-slate-50"></div>
@@ -116,11 +116,11 @@ export function DividendGame() {
                     <motion.div
                         initial={{ height: '0%' }}
                         animate={isInView ? { height: `${coveragePercent}%` } : { height: '0%' }}
-                        transition={{ duration: 2.5, ease: "easeInOut", delay: 1.0 }} 
+                        transition={{ duration: 2.5, ease: "easeInOut", delay: 1.0 }}
                         className="absolute bottom-0 w-full bg-gradient-to-t from-cyan-500 via-sky-400 to-blue-300 opacity-90"
                     >
-                         {/* Wave SVG - Always animating */}
-                         <div className="absolute -top-5 left-0 w-[200%] h-8 animate-wave">
+                        {/* Wave SVG - Always animating */}
+                        <div className="absolute -top-5 left-0 w-[200%] h-8 animate-wave">
                             <svg className="w-full h-full fill-blue-300" viewBox="0 0 1200 120" preserveAspectRatio="none">
                                 <path d="M321.39,56.44c58-10.79,114.16-30.13,172-41.86,82.39-16.72,168.19-17.73,250.45-.39C823.78,31,906.67,72,985.66,92.83c70.05,18.48,146.53,26.09,214.34,3V0H0V27.35A600.21,600.21,0,0,0,321.39,56.44Z"></path>
                             </svg>
@@ -143,16 +143,16 @@ export function DividendGame() {
                     </div>
 
                     {/* Floating Sparkles */}
-                    <motion.div 
-                        animate={{ y: [0, -10, 0] }} 
+                    <motion.div
+                        animate={{ y: [0, -10, 0] }}
                         transition={{ repeat: Infinity, duration: 2, ease: "easeInOut" }}
                         className="absolute top-10 right-8"
                     >
                         <Sparkles className="text-amber-400 w-6 h-6" />
                     </motion.div>
-                    
-                    <motion.div 
-                        animate={{ y: [0, -5, 0] }} 
+
+                    <motion.div
+                        animate={{ y: [0, -5, 0] }}
                         transition={{ repeat: Infinity, duration: 3, ease: "easeInOut", delay: 1 }}
                         className="absolute bottom-20 left-6"
                     >
