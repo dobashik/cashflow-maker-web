@@ -1,3 +1,4 @@
+@import url('https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@400;500;700;900&display=swap');
 @import "tailwindcss";
 
 @theme {
@@ -10,6 +11,7 @@
   /* slate-50 */
   --foreground: #283593;
   /* indigo-900 like */
+  --font-zen-maru: "Zen Maru Gothic", sans-serif;
 }
 
 body {

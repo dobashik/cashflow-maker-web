@@ -22,11 +22,11 @@ export function PortfolioPie() {
     const totalAssets = data.reduce((sum, item) => sum + item.value, 0);
 
     return (
-        <div className="bg-white rounded-3xl p-6 shadow-xl border border-indigo-50 relative overflow-hidden">
+        <div className="bg-white rounded-2xl p-6 shadow-sm border border-indigo-50 relative overflow-hidden h-full">
             <h3 className="text-xl font-bold text-indigo-900 mb-2 flex items-center gap-2">
-                資産の「黄金バランス」
+                セクター比率
             </h3>
-            <p className="text-xs font-mono text-slate-400 mb-6 uppercase tracking-wider">Sector Allocation</p>
+            <p className="text-xs font-mono text-slate-400 mb-6 uppercase tracking-wider">SECTOR ALLOCATION</p>
 
             <motion.div
                 className="h-[300px] w-full relative"
@@ -45,7 +45,7 @@ export function PortfolioPie() {
                         <Pie
                             data={data}
                             innerRadius={60}
-                            outerRadius={100}
+                            outerRadius={80}
                             paddingAngle={5}
                             dataKey="value"
                             animationDuration={1500}
