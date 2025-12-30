@@ -1,10 +1,10 @@
 "use client";
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { Castle, User as UserIcon, LogOut } from 'lucide-react';
 import { createClient } from '@/utils/supabase/client';
 import { type User } from '@supabase/supabase-js';
-import { logout } from '@/app/login/actions';
 import { AuthModal } from './AuthModal';
 import { Button } from './ui/Button'; // Keeping existing import if it was there, but using standard HTML button for custom styling if needed to match requested design.
 
@@ -13,6 +13,7 @@ type HeaderProps = {
 };
 
 export function Header({ onRefreshAnimations }: HeaderProps) {
+    const router = useRouter();
     const [isScrolled, setIsScrolled] = useState(false);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [user, setUser] = useState<User | null>(null);
@@ -53,16 +54,22 @@ export function Header({ onRefreshAnimations }: HeaderProps) {
     };
 
     const handleLogout = async () => {
-        await logout();
-        setUser(null);
+        try {
+            await supabase.auth.signOut();
+            setUser(null);
+            router.refresh();
+            window.location.href = '/';
+        } catch (error) {
+            console.error("Logout error:", error);
+        }
     };
 
     return (
         <>
             <header
                 className={`fixed top-0 left-0 right-0 z-50 px-6 py-4 flex items-center justify-between transition-all duration-300 ${isScrolled
-                        ? 'backdrop-blur-md bg-white/70 border-b border-white/20 shadow-sm'
-                        : 'bg-transparent'
+                    ? 'backdrop-blur-md bg-white/70 border-b border-white/20 shadow-sm'
+                    : 'bg-transparent'
                     }`}
             >
                 <div className="flex items-center gap-2 cursor-pointer group">
