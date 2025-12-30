@@ -1,5 +1,5 @@
 "use server";
-export const runtime = "edge";
+
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";

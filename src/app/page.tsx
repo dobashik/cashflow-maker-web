@@ -2,6 +2,8 @@
 
 import { useState } from 'react';
 import { motion } from "framer-motion";
+
+export const runtime = "edge";
 import { Header } from '@/components/Header';
 import { DividendGame } from '@/components/DividendGame';
 import { PortfolioPie } from '@/components/PortfolioPie';
