@@ -1,11 +1,10 @@
 "use server";
+export const runtime = "edge";
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { createClient } from "@/utils/supabase/server";
-
-export const runtime = "edge";
 
 export async function login(email: string) {
   const supabase = await createClient();
