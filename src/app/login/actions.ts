@@ -5,13 +5,15 @@ import { redirect } from "next/navigation";
 
 import { createClient } from "@/utils/supabase/server";
 
+export const runtime = "edge";
+
 export async function login(email: string) {
   const supabase = await createClient();
 
   // Use the environment variable if available (e.g. for Vercel preview URLs usually not needed if configured correctly in Supabase, but good for manual overrides)
   // Or simply use the current origin if available from headers, but in Server Actions headers() might be needed for dynamic origin.
   // The user requested: NEXT_PUBLIC_BASE_URL (or origin) + /auth/callback
-  
+
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
   // Trim trailing slash if present to avoid double slashes
   const cleanBaseUrl = baseUrl.replace(/\/$/, "");
