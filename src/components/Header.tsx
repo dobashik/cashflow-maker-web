@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { Castle, User as UserIcon, LogOut } from 'lucide-react';
 import { createClient } from '@/utils/supabase/client';
 import { type User } from '@supabase/supabase-js';
@@ -72,7 +73,7 @@ export function Header({ onRefreshAnimations }: HeaderProps) {
                     : 'bg-transparent'
                     }`}
             >
-                <div className="flex items-center gap-2 cursor-pointer group">
+                <Link href="/" className="flex items-center gap-2 cursor-pointer group">
                     <div className="p-2 bg-indigo-600 rounded-xl shadow-lg shadow-indigo-300 transition-transform group-hover:scale-110 group-hover:rotate-6">
                         <Castle className="w-6 h-6 text-white" />
                     </div>
@@ -84,7 +85,7 @@ export function Header({ onRefreshAnimations }: HeaderProps) {
                             日本高配当株ポートフォリオ
                         </span>
                     </div>
-                </div>
+                </Link>
 
                 <div className="flex items-center gap-6">
                     <nav className="hidden md:flex gap-4">
