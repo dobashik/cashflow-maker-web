@@ -24,11 +24,14 @@ export const EXPENSES: ExpenseBlock[] = [
 ];
 
 export const HOLDINGS: Holding[] = [
-    { code: '2914', name: 'Japan Tobacco', quantity: 1200, price: 3850, dividendPerShare: 194, sector: 'Foods' }, // Div: 232,800
-    { code: '8058', name: 'Mitsubishi Corp', quantity: 800, price: 2980, dividendPerShare: 100, sector: 'Wholesale' }, // Div: 80,000
-    { code: '9433', name: 'KDDI', quantity: 500, price: 4450, dividendPerShare: 140, sector: 'Info & Comm' }, // Div: 70,000
-    { code: '8306', name: 'MUFG', quantity: 1500, price: 1350, dividendPerShare: 55, sector: 'Banks' }, // Div: 82,500
-    { code: '8766', name: 'Tokio Marine', quantity: 400, price: 3900, dividendPerShare: 120, sector: 'Insurance' }, // Div: 48,000
+    { code: "2914", name: "日本たばこ産業 (JT)", price: 3850, quantity: 1200, dividendPerShare: 194, sector: "食料品" },
+    { code: "8058", name: "三菱商事", price: 2980, quantity: 800, dividendPerShare: 100, sector: "卸売業" },
+    { code: "9433", name: "KDDI", price: 4450, quantity: 500, dividendPerShare: 140, sector: "情報・通信業" },
+    { code: "8306", name: "三菱UFJフィナンシャルG", price: 1350, quantity: 1500, dividendPerShare: 55, sector: "銀行業" },
+    { code: "8766", name: "東京海上HD", price: 5200, quantity: 300, dividendPerShare: 159, sector: "保険業" },
+    { code: "8593", name: "三菱HCキャピタル", price: 980, quantity: 2000, dividendPerShare: 40, sector: "その他金融業" },
+    { code: "6301", name: "コマツ", price: 3900, quantity: 400, dividendPerShare: 120, sector: "機械" },
+    { code: "1928", name: "積水ハウス", price: 3400, quantity: 600, dividendPerShare: 125, sector: "建設業" }
 ];
 
 export const TOTAL_EXPENSES = EXPENSES.reduce((sum, item) => sum + item.amount, 0);
