@@ -28,7 +28,7 @@ export function SampleDashboard() {
             </div>
 
             {/* Sample Dashboard (Dimmed) */}
-            <div className="relative opacity-90 select-none pointer-events-none">
+            <div className="relative opacity-90 select-none">
                 {/* Full-coverage Watermark */}
                 <div
                     className="absolute inset-0 z-50 overflow-hidden pointer-events-none"
@@ -40,7 +40,7 @@ export function SampleDashboard() {
                         width: '100%',
                     }}
                 />
-                <div className="absolute inset-0 z-40 bg-gradient-to-b from-transparent via-transparent to-slate-50/30" />
+                <div className="absolute inset-0 z-40 bg-gradient-to-b from-transparent via-transparent to-slate-50/30 pointer-events-none" />
 
                 <div className="pt-8 pb-20 grayscale-[30%]">
                     <DashboardContent animationKey={animationKey} />
