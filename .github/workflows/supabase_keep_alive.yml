@@ -1,0 +1,18 @@
+name: Supabase Keep Alive
+
+on:
+  schedule:
+    # 日本時間の日曜日 06:30 (UTC 土曜日 21:30：日本時間の日曜日　6:30) に実行
+    # 分 時 日 月 曜日 (6は土曜日)
+    - cron: '30 21 * * 6'
+  workflow_dispatch: # これを入れておくと、GitHub上のボタンから手動でいつでもテスト実行できます
+
+jobs:
+  supabase_ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send Ping to Supabase API
+        run: |
+          curl -i -X GET "${{ secrets.SUPABASE_URL }}/rest/v1/" \
+          -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
+          -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}"
