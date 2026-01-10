@@ -8,13 +8,13 @@ import { PortfolioPie } from '@/components/PortfolioPie';
 import { HoldingsTable } from '@/components/HoldingsTable';
 import { DividendCalendar } from '@/components/DividendCalendar';
 
-export function DashboardContent({ animationKey = 0 }: { animationKey?: number }) {
+export function DashboardContent({ animationKey = 0, isSampleMode = false }: { animationKey?: number, isSampleMode?: boolean }) {
     return (
         <div className="container mx-auto px-4 space-y-8">
             {/* 1. Holdings List Section (Moved to Top) */}
             <section id="holdings-list" className="w-full pt-4">
                 <motion.div key={`holdings-${animationKey}`} initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-                    <HoldingsTable />
+                    <HoldingsTable isSampleMode={isSampleMode} />
                 </motion.div>
             </section>
 

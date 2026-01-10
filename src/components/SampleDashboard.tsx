@@ -43,7 +43,7 @@ export function SampleDashboard() {
                 <div className="absolute inset-0 z-40 bg-gradient-to-b from-transparent via-transparent to-slate-50/30 pointer-events-none" />
 
                 <div className="pt-8 pb-20 grayscale-[30%]">
-                    <DashboardContent animationKey={animationKey} />
+                    <DashboardContent animationKey={animationKey} isSampleMode={true} />
                 </div>
             </div>
         </main>
