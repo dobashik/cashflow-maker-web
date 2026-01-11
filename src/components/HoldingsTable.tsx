@@ -1,7 +1,7 @@
 
 import { TrendingUp, MoreHorizontal, FileDown } from 'lucide-react';
 import { HOLDINGS, Holding } from '@/lib/mockData';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, Variants } from 'framer-motion';
 import { useState, useRef, useEffect } from 'react';
 import { parseRakutenCSV, parseSBICSV, loadCSV } from '@/utils/csvParser';
 import { createClient } from '@/utils/supabase/client';
@@ -111,14 +111,14 @@ export function HoldingsTable({ isSampleMode = false }: { isSampleMode?: boolean
         }
     };
 
-    const itemVariant = {
+    const itemVariant: Variants = {
         hidden: { x: -20, opacity: 0 },
         show: (i: number) => ({
             x: 0,
             opacity: 1,
             transition: {
                 delay: i * 0.05,
-                type: "spring",
+                type: "spring" as const,
                 stiffness: 300,
                 damping: 24
             }
