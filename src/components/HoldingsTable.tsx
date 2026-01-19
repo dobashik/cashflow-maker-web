@@ -251,7 +251,6 @@ export function HoldingsTable({ isSampleMode = false }: { isSampleMode?: boolean
             dividend_per_share: item.dividendPerShare,
             source: item.source, // e.g. ['SBI']
             account_type: item.accountType,
-            account_type: item.accountType,
             sector: item.sector,
         }));
 
