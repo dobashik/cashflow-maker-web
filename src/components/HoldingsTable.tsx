@@ -1,10 +1,11 @@
 
-import { TrendingUp, MoreHorizontal, FileDown } from 'lucide-react';
+import { TrendingUp, MoreHorizontal, FileDown, RefreshCcw } from 'lucide-react';
 import { HOLDINGS, Holding } from '@/lib/mockData';
 import { motion, AnimatePresence, Variants } from 'framer-motion';
 import { useState, useRef, useEffect } from 'react';
 import { parseRakutenCSV, parseSBICSV, loadCSV } from '@/utils/csvParser';
 import { createClient } from '@/utils/supabase/client';
+import { updateAllStockPrices, updateAllSectorData } from '@/app/actions/stockActions';
 
 import {
     DropdownMenu,
@@ -30,7 +31,8 @@ export function HoldingsTable({ isSampleMode = false }: { isSampleMode?: boolean
 
         const { data, error } = await supabase
             .from('holdings')
-            .select('*');
+            .select('*')
+            .eq('user_id', user.id);
 
         if (error) {
             console.error('Error fetching holdings:', error);
@@ -43,7 +45,6 @@ export function HoldingsTable({ isSampleMode = false }: { isSampleMode?: boolean
             const mergedMap = new Map<string, Holding>();
 
             data.forEach((row: any) => {
-                // Map DB snake_case to JS camelCase
                 const item: Holding = {
                     code: row.code,
                     name: row.name,
@@ -55,6 +56,7 @@ export function HoldingsTable({ isSampleMode = false }: { isSampleMode?: boolean
                     source: row.source || [], // text[]
                     accountType: row.account_type || '特定',
                     sector: row.sector || '',
+                    sector33: row.sector_33 || '',
                 };
 
                 const existing = mergedMap.get(item.code);
@@ -79,6 +81,7 @@ export function HoldingsTable({ isSampleMode = false }: { isSampleMode?: boolean
                         source: mergedSource,
                         accountType: mergedAccount,
                         sector: existing.sector || item.sector,
+                        sector33: existing.sector33 || item.sector33,
                     });
                 } else {
                     mergedMap.set(item.code, item);
@@ -86,21 +89,59 @@ export function HoldingsTable({ isSampleMode = false }: { isSampleMode?: boolean
             });
 
             setHoldings(Array.from(mergedMap.values()));
+
+            // Return user ID for auto-update trigger
+            return user.id;
         }
+        return null;
     };
 
-    // Initial Load
+    // Initial Load + Auto Price Update on Login
     useEffect(() => {
-        if (!isSampleMode) {
-            fetchHoldings();
-        }
+        if (isSampleMode) return;
+
+        const initializeHoldings = async () => {
+            const userId = await fetchHoldings();
+
+            // Auto-update on first load of this session (if not already done)
+            if (userId) {
+                const sessionKey = `holdings_auto_updated_${userId}`;
+                const alreadyUpdated = sessionStorage.getItem(sessionKey);
+
+                if (!alreadyUpdated) {
+                    console.log('[HoldingsTable] Auto-updating stock prices on login...');
+                    setIsUpdating(true);
+                    try {
+                        // Step 1: Update sector data
+                        const sectorResult = await updateAllSectorData(userId);
+                        console.log('[HoldingsTable] Auto sector update:', sectorResult.message);
+
+                        // Step 2: Update stock prices
+                        const priceResult = await updateAllStockPrices(userId);
+                        console.log('[HoldingsTable] Auto price update:', priceResult.message);
+
+                        // Refresh UI with updated data
+                        await fetchHoldings();
+
+                        // Mark as updated for this session
+                        sessionStorage.setItem(sessionKey, 'true');
+                    } catch (error) {
+                        console.error('[HoldingsTable] Auto-update error:', error);
+                    } finally {
+                        setIsUpdating(false);
+                    }
+                }
+            }
+        };
+
+        initializeHoldings();
     }, [isSampleMode]);
 
-    // 4. Other Hooks
     // 4. Other Hooks
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [importType, setImportType] = useState<'sbi' | 'rakuten' | null>(null);
     const importTypeRef = useRef<'sbi' | 'rakuten' | null>(null);
+    const [isUpdating, setIsUpdating] = useState(false);
 
     // 5. Animation Variants
     const container = {
@@ -139,6 +180,40 @@ export function HoldingsTable({ isSampleMode = false }: { isSampleMode?: boolean
         }
     };
 
+    // 手動株価更新ハンドラー
+    const handleUpdatePrices = async () => {
+        if (isSampleMode) {
+            alert("この機能を利用するにはログインしてください");
+            return;
+        }
+
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+            alert("セッションが切れました。ログインしてください。");
+            return;
+        }
+
+        setIsUpdating(true);
+        try {
+            // Step 1: セクター情報を更新
+            const sectorResult = await updateAllSectorData(user.id);
+            console.log('[HoldingsTable] Sector update:', sectorResult.message);
+
+            // Step 2: 最新株価を取得・更新
+            const priceResult = await updateAllStockPrices(user.id);
+            console.log('[HoldingsTable] Price update:', priceResult.message);
+
+            // Refresh UI
+            await fetchHoldings();
+            alert(`${sectorResult.message}\n${priceResult.message}`);
+        } catch (error) {
+            console.error('[HoldingsTable] Update error:', error);
+            alert('更新中にエラーが発生しました');
+        } finally {
+            setIsUpdating(false);
+        }
+    };
+
     // DB Save Logic (Delete & Insert)
     const saveHoldingsToSupabase = async (newItems: Holding[], currentImportType: 'sbi' | 'rakuten') => {
         if (isSampleMode) return;
@@ -165,7 +240,6 @@ export function HoldingsTable({ isSampleMode = false }: { isSampleMode?: boolean
         }
 
         // Step B: Insert new records
-        // Map JS camelCase to DB snake_case
         const dbRows = newItems.map(item => ({
             user_id: user.id,
             code: item.code,
@@ -177,7 +251,8 @@ export function HoldingsTable({ isSampleMode = false }: { isSampleMode?: boolean
             dividend_per_share: item.dividendPerShare,
             source: item.source, // e.g. ['SBI']
             account_type: item.accountType,
-            sector: item.sector
+            account_type: item.accountType,
+            sector: item.sector,
         }));
 
         const { error: insertError } = await supabase
@@ -192,7 +267,7 @@ export function HoldingsTable({ isSampleMode = false }: { isSampleMode?: boolean
 
         // Refresh UI
         await fetchHoldings();
-        alert('インポートが完了しました');
+        return user.id; // Return user ID for auto-update
     };
 
     const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -211,7 +286,30 @@ export function HoldingsTable({ isSampleMode = false }: { isSampleMode?: boolean
             }
 
             if (newHoldings.length > 0) {
-                await saveHoldingsToSupabase(newHoldings, currentImportType);
+                const userId = await saveHoldingsToSupabase(newHoldings, currentImportType);
+
+                // Auto-update: セクター情報と株価を自動取得
+                if (userId) {
+                    setIsUpdating(true);
+                    try {
+                        // Step 1: セクター情報を取得・更新
+                        const sectorResult = await updateAllSectorData(userId);
+                        console.log('[HoldingsTable] Sector update:', sectorResult.message);
+
+                        // Step 2: 最新株価を取得・更新
+                        const priceResult = await updateAllStockPrices(userId);
+                        console.log('[HoldingsTable] Price update:', priceResult.message);
+
+                        // Refresh UI with updated data
+                        await fetchHoldings();
+                        alert(`インポート完了！\n${sectorResult.message}\n${priceResult.message}`);
+                    } catch (updateError) {
+                        console.error('[HoldingsTable] Auto-update error:', updateError);
+                        alert('インポートは完了しましたが、株価更新中にエラーが発生しました');
+                    } finally {
+                        setIsUpdating(false);
+                    }
+                }
             } else {
                 alert("読み込み可能なデータが見つかりませんでした");
             }
@@ -240,38 +338,55 @@ export function HoldingsTable({ isSampleMode = false }: { isSampleMode?: boolean
                     onChange={handleFileChange}
                 />
 
-                <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                        <button className="text-slate-400 hover:text-indigo-600 outline-none">
-                            <MoreHorizontal />
-                        </button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="bg-white rounded-xl shadow-xl border border-slate-100 p-2 min-w-[200px]">
-                        <DropdownMenuItem
-                            className="flex items-center gap-2 p-2 hover:bg-indigo-50 rounded-lg cursor-pointer text-slate-600 hover:text-indigo-900"
-                            onClick={() => handleImportClick('sbi')}
-                        >
-                            <FileDown className="w-4 h-4" /> SBI証券 CSVインポート
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                            className="flex items-center gap-2 p-2 hover:bg-indigo-50 rounded-lg cursor-pointer text-slate-600 hover:text-indigo-900"
-                            onClick={() => handleImportClick('rakuten')}
-                        >
-                            <FileDown className="w-4 h-4" /> 楽天証券 CSVインポート
-                        </DropdownMenuItem>
-                    </DropdownMenuContent>
-                </DropdownMenu>
+                <div className="flex items-center gap-3">
+                    {/* 独立した株価更新ボタン */}
+                    <button
+                        onClick={handleUpdatePrices}
+                        disabled={isUpdating || isSampleMode}
+                        className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${isUpdating || isSampleMode
+                            ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                            : 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200'
+                            }`}
+                    >
+                        <RefreshCcw className={`w-4 h-4 ${isUpdating ? 'animate-spin' : ''}`} />
+                        {isUpdating ? '更新中...' : '株価更新'}
+                    </button>
+
+                    <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                            <button className="text-slate-400 hover:text-indigo-600 outline-none">
+                                <MoreHorizontal />
+                            </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="bg-white rounded-xl shadow-xl border border-slate-100 p-2 min-w-[200px]">
+                            <DropdownMenuItem
+                                className="flex items-center gap-2 p-2 hover:bg-indigo-50 rounded-lg cursor-pointer text-slate-600 hover:text-indigo-900"
+                                onClick={() => handleImportClick('sbi')}
+                            >
+                                <FileDown className="w-4 h-4" /> SBI証券 CSVインポート
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                                className="flex items-center gap-2 p-2 hover:bg-indigo-50 rounded-lg cursor-pointer text-slate-600 hover:text-indigo-900"
+                                onClick={() => handleImportClick('rakuten')}
+                            >
+                                <FileDown className="w-4 h-4" /> 楽天証券 CSVインポート
+                            </DropdownMenuItem>
+                        </DropdownMenuContent>
+                    </DropdownMenu>
+                </div>
             </div>
-            <p className="text-xs font-mono text-slate-400 mb-4 uppercase tracking-wider flex-shrink-0">Holdings List</p>
+            <p className="text-xs font-mono text-slate-400 uppercase tracking-wider flex-shrink-0">Holdings List</p>
+            <p className="text-xs text-slate-400 mb-4 mt-1 flex-shrink-0">※株価は20分以上遅延している場合があります。</p>
 
             <div className="overflow-auto border border-slate-100 rounded-xl flex-grow">
-                <table className="w-full min-w-[1000px] border-collapse bg-white">
+                <table className="w-full min-w-[1200px] border-collapse bg-white">
                     <thead className="bg-slate-50 sticky top-0 z-10 shadow-sm">
                         <tr className="text-xs font-bold text-slate-400 uppercase tracking-wider text-right">
                             <th className="px-4 py-3 text-left whitespace-nowrap">コード</th>
                             <th className="px-4 py-3 text-left whitespace-nowrap">銘柄名</th>
+                            <th className="px-4 py-3 text-left whitespace-nowrap">セクター</th>
                             <th className="px-4 py-3 whitespace-nowrap">取得単価</th>
-                            <th className="px-4 py-3 whitespace-nowrap">株価</th>
+                            <th className="px-4 py-3 whitespace-nowrap">現在の株価</th>
                             <th className="px-4 py-3 whitespace-nowrap">保有株数</th>
                             <th className="px-4 py-3 whitespace-nowrap">総資産</th>
                             <th className="px-4 py-3 whitespace-nowrap">損益</th>
@@ -346,11 +461,18 @@ export function HoldingsTable({ isSampleMode = false }: { isSampleMode?: boolean
                                                 </div>
                                             </div>
                                         </td>
+                                        <td className="px-4 py-3 text-left text-xs text-slate-500 whitespace-nowrap">
+                                            {stock.sector || '-'}
+                                        </td>
                                         <td className="px-4 py-3 text-right font-medium text-slate-500 whitespace-nowrap">
                                             {formatYen(stock.acquisitionPrice)}
                                         </td>
-                                        <td className="px-4 py-3 text-right font-medium text-slate-800 whitespace-nowrap">
-                                            {formatYen(stock.price)}
+                                        <td className={`px-4 py-3 text-right font-medium whitespace-nowrap ${stock.price === 0 ? 'text-rose-500' : 'text-slate-800'}`}>
+                                            {stock.price === 0 ? (
+                                                <span className="text-xs">取得失敗</span>
+                                            ) : (
+                                                formatYen(stock.price)
+                                            )}
                                         </td>
                                         <td className="px-4 py-3 text-right text-slate-600 font-mono whitespace-nowrap">
                                             {formatNum(stock.quantity)}

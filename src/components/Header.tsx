@@ -136,7 +136,7 @@ export function Header({ onRefreshAnimations }: HeaderProps) {
                                 onClick={() => setIsModalOpen(true)}
                                 className="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold py-2.5 px-5 rounded-full shadow-lg shadow-indigo-200 transition-all hover:scale-105 active:scale-95"
                             >
-                                30日間無料で始める / ログイン
+                                90日間無料で始める / ログイン
                             </button>
                         )}
                     </div>

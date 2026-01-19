@@ -2,7 +2,7 @@ import { createClient } from "@/utils/supabase/server";
 import { Dashboard } from "@/components/Dashboard";
 import { SampleDashboard } from "@/components/SampleDashboard";
 
-export const runtime = "edge";
+export const runtime = "nodejs";
 
 export default async function Home() {
   const supabase = await createClient();

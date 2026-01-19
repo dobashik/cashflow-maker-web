@@ -52,9 +52,9 @@ export function HeroSection() {
                     transition={{ duration: 0.8, ease: "easeOut" }}
                 >
                     <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold text-slate-900 leading-tight mb-6">
-                        <span className="inline-block">配当金が、</span>
-                        <span className="inline-block">生活費を<span className="text-indigo-600">超える日</span>を</span>
-                        <span className="inline-block">可視化する。</span>
+                        <span className="inline-block">あなたの配当金が、</span>
+                        <span className="inline-block"><span className="text-indigo-600">自由への地図</span>に</span>
+                        <span className="inline-block">変わる場所。</span>
                     </h1>
 
                     <p className="max-w-2xl mx-auto text-lg md:text-xl text-slate-600 mb-10 leading-relaxed">
