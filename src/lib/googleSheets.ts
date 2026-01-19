@@ -1,5 +1,5 @@
-// Node.js ランタイムを強制（Edge runtime では process.env が動作しないため）
-export const runtime = 'nodejs';
+// Node.js ランタイム指定を削除（Edge互換にするため）
+// export const runtime = 'nodejs';
 
 /**
  * Google Sheets API 連携モジュール
@@ -77,15 +77,15 @@ let cacheTimestamp: number = 0;
 const CACHE_TTL = 1000 * 60 * 60; // 1時間
 
 /**
- * ローカルCSVから銘柄マスタデータを取得
+ * ローカルCSVから銘柄マスタデータを取得 (Edge Runtime対応版)
  * 
- * CSVファイル: data/stock_master.csv
+ * file system (fs) を使用せず、Web上の静的アセットとして fetch で取得する。
+ * 
+ * CSVファイル: public/stock_master.csv
  * 列マッピング:
  * - B列 (index 1): 銘柄コード（1301.0 → 1301 に正規化）
  * - C列 (index 2): 銘柄名
  * - H列 (index 7): 17業種区分（sector）
- * 
- * ※ Google Sheets シート1への依存を完全に排除
  */
 export async function fetchMasterData(): Promise<MasterDataMap> {
     // キャッシュが有効な場合はキャッシュを返す
@@ -95,51 +95,67 @@ export async function fetchMasterData(): Promise<MasterDataMap> {
         return masterDataCache;
     }
 
-    console.log('[MasterData] CSVからマスタデータ取得開始...');
+    console.log('[MasterData] fetchでマスタデータ取得開始...');
 
-    const fs = await import('fs');
-    const path = await import('path');
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
+    // URL構築時にはスラッシュの重複に注意
+    const csvUrl = `${baseUrl.replace(/\/$/, '')}/stock_master.csv`;
 
-    // プロジェクトルートからの相対パスでCSVを読み込み
-    const csvPath = path.join(process.cwd(), 'src', 'data', 'stock_master.csv');
-    const csvContent = fs.readFileSync(csvPath, 'utf-8');
+    console.log(`[MasterData] Fetching CSV from: ${csvUrl}`);
 
-    // 改行で行分割（Windows/Mac/Linux対応）
-    const lines = csvContent.split(/\r?\n/);
-    const masterData: MasterDataMap = {};
+    try {
+        const response = await fetch(csvUrl, {
+            next: { revalidate: 3600 } // 1時間キャッシュ
+        });
 
-    // ヘッダー行をスキップ（index 0）
-    for (let i = 1; i < lines.length; i++) {
-        const line = lines[i];
-        if (!line.trim()) continue;
+        if (!response.ok) {
+            throw new Error(`Failed to fetch CSV: ${response.status} ${response.statusText}`);
+        }
 
-        // カンマで列分割
-        const columns = line.split(',');
+        const csvContent = await response.text();
 
-        // B列 (index 1): 銘柄コード - 「1301.0」のような形式を「1301」に正規化
-        const rawCode = String(columns[1] || '');
-        const code = rawCode.split('.')[0].trim();
-        if (!code) continue;
+        // 改行で行分割（Windows/Mac/Linux対応）
+        const lines = csvContent.split(/\r?\n/);
+        const masterData: MasterDataMap = {};
 
-        // C列 (index 2): 銘柄名
-        const name = String(columns[2] || '').trim();
+        // ヘッダー行をスキップ（index 0）
+        for (let i = 1; i < lines.length; i++) {
+            const line = lines[i];
+            if (!line.trim()) continue;
 
-        // H列 (index 7): 17業種区分 → sectorカラムにマッピング
-        const sector = String(columns[7] || '').trim();
+            // カンマで列分割
+            const columns = line.split(',');
 
-        masterData[code] = {
-            name: name,
-            sector33: '', // CSVには33業種区分は含まない（必要に応じて追加可能）
-            sector: sector,
-        };
+            // B列 (index 1): 銘柄コード - 「1301.0」のような形式を「1301」に正規化
+            const rawCode = String(columns[1] || '');
+            const code = rawCode.split('.')[0].trim();
+            if (!code) continue;
+
+            // C列 (index 2): 銘柄名
+            const name = String(columns[2] || '').trim();
+
+            // H列 (index 7): 17業種区分 → sectorカラムにマッピング
+            const sector = String(columns[7] || '').trim();
+
+            masterData[code] = {
+                name: name,
+                sector33: '', // CSVには33業種区分は含まない（必要に応じて追加可能）
+                sector: sector,
+            };
+        }
+
+        // キャッシュを更新
+        masterDataCache = masterData;
+        cacheTimestamp = now;
+
+        console.log(`[MasterData] ${Object.keys(masterData).length}件のマスタデータを読み込みました`);
+        return masterData;
+
+    } catch (error) {
+        console.error('[MasterData] CSV fetch error:', error);
+        // エラー時は空オブジェクトを返す（アプリをクラッシュさせないため）
+        return {};
     }
-
-    // キャッシュを更新
-    masterDataCache = masterData;
-    cacheTimestamp = now;
-
-    console.log(`[MasterData] ${Object.keys(masterData).length}件のマスタデータを読み込みました`);
-    return masterData;
 }
 
 /**
