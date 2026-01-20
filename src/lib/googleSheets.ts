@@ -1,20 +1,8 @@
-// Node.js ランタイム指定を削除（Edge互換にするため）
-// export const runtime = 'nodejs';
+// Edge Runtime対応のため、googleapisを排除し、標準fetchとjoseを使用する
+import { SignJWT, importPKCS8 } from 'jose';
 
 /**
- * Google Sheets API 連携モジュール
- * 
- * Google Sheets を「計算エンジン」として利用するためのユーティリティ。
- * - シート1: 銘柄マスタ（4,000銘柄のコード、名称、セクター情報）
- * - シート2: 計算ワークスペース（IMPORTXMLで株価取得）
- * 
- * Note: googleapis は serverExternalPackages に設定済み（next.config.ts）
- */
-
-import { google, sheets_v4 } from 'googleapis';
-
-/**
- * 環境変数を取得（Node.js環境で確実に実行）
+ * 環境変数を取得
  */
 function getEnvVariables() {
     const GOOGLE_SERVICE_ACCOUNT_EMAIL = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
@@ -25,25 +13,56 @@ function getEnvVariables() {
 }
 
 /**
- * Google Sheets API クライアントを取得
+ * Access Tokenを取得する (joseを使用)
  */
-export async function getGoogleSheets(): Promise<sheets_v4.Sheets> {
+async function getAccessToken(): Promise<string> {
     const { GOOGLE_SERVICE_ACCOUNT_EMAIL, GOOGLE_PRIVATE_KEY } = getEnvVariables();
 
     if (!GOOGLE_SERVICE_ACCOUNT_EMAIL || !GOOGLE_PRIVATE_KEY) {
         throw new Error('Google Sheets credentials not configured');
     }
 
-    const auth = new google.auth.GoogleAuth({
-        credentials: {
-            client_email: GOOGLE_SERVICE_ACCOUNT_EMAIL,
-            private_key: GOOGLE_PRIVATE_KEY,
-        },
-        scopes: ['https://www.googleapis.com/auth/spreadsheets'],
-    });
+    const SCOPES = ['https://www.googleapis.com/auth/spreadsheets'];
 
-    const authClient = await auth.getClient();
-    return google.sheets({ version: 'v4', auth: authClient as any });
+    try {
+        const alg = 'RS256';
+        const pkcs8 = await importPKCS8(GOOGLE_PRIVATE_KEY, alg);
+
+        const jwt = await new SignJWT({
+            scope: SCOPES.join(' '),
+        })
+            .setProtectedHeader({ alg })
+            .setIssuer(GOOGLE_SERVICE_ACCOUNT_EMAIL)
+            .setSubject(GOOGLE_SERVICE_ACCOUNT_EMAIL)
+            .setAudience('https://oauth2.googleapis.com/token')
+            .setIssuedAt()
+            .setExpirationTime('1h')
+            .sign(pkcs8);
+
+        const params = new URLSearchParams();
+        params.append('grant_type', 'urn:ietf:params:oauth:grant-type:jwt-bearer');
+        params.append('assertion', jwt);
+
+        const response = await fetch('https://oauth2.googleapis.com/token', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: params,
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Failed to get access token: ${response.status} ${errorText}`);
+        }
+
+        const data = await response.json();
+        return data.access_token;
+
+    } catch (error) {
+        console.error('Error in getAccessToken:', error);
+        throw error;
+    }
 }
 
 /**
@@ -79,16 +98,9 @@ const CACHE_TTL = 1000 * 60 * 60; // 1時間
 /**
  * ローカルCSVから銘柄マスタデータを取得 (Edge Runtime対応版)
  * 
- * file system (fs) を使用せず、Web上の静的アセットとして fetch で取得する。
- * 
  * CSVファイル: public/stock_master.csv
- * 列マッピング:
- * - B列 (index 1): 銘柄コード（1301.0 → 1301 に正規化）
- * - C列 (index 2): 銘柄名
- * - H列 (index 7): 17業種区分（sector）
  */
 export async function fetchMasterData(): Promise<MasterDataMap> {
-    // キャッシュが有効な場合はキャッシュを返す
     const now = Date.now();
     if (masterDataCache && (now - cacheTimestamp) < CACHE_TTL) {
         console.log(`[MasterData] キャッシュから${Object.keys(masterDataCache).length}件のマスタデータを返却`);
@@ -98,14 +110,13 @@ export async function fetchMasterData(): Promise<MasterDataMap> {
     console.log('[MasterData] fetchでマスタデータ取得開始...');
 
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
-    // URL構築時にはスラッシュの重複に注意
     const csvUrl = `${baseUrl.replace(/\/$/, '')}/stock_master.csv`;
 
     console.log(`[MasterData] Fetching CSV from: ${csvUrl}`);
 
     try {
         const response = await fetch(csvUrl, {
-            next: { revalidate: 3600 } // 1時間キャッシュ
+            next: { revalidate: 3600 }
         });
 
         if (!response.ok) {
@@ -113,38 +124,28 @@ export async function fetchMasterData(): Promise<MasterDataMap> {
         }
 
         const csvContent = await response.text();
-
-        // 改行で行分割（Windows/Mac/Linux対応）
         const lines = csvContent.split(/\r?\n/);
         const masterData: MasterDataMap = {};
 
-        // ヘッダー行をスキップ（index 0）
         for (let i = 1; i < lines.length; i++) {
             const line = lines[i];
             if (!line.trim()) continue;
 
-            // カンマで列分割
             const columns = line.split(',');
-
-            // B列 (index 1): 銘柄コード - 「1301.0」のような形式を「1301」に正規化
             const rawCode = String(columns[1] || '');
             const code = rawCode.split('.')[0].trim();
             if (!code) continue;
 
-            // C列 (index 2): 銘柄名
             const name = String(columns[2] || '').trim();
-
-            // H列 (index 7): 17業種区分 → sectorカラムにマッピング
             const sector = String(columns[7] || '').trim();
 
             masterData[code] = {
                 name: name,
-                sector33: '', // CSVには33業種区分は含まない（必要に応じて追加可能）
+                sector33: '',
                 sector: sector,
             };
         }
 
-        // キャッシュを更新
         masterDataCache = masterData;
         cacheTimestamp = now;
 
@@ -153,7 +154,6 @@ export async function fetchMasterData(): Promise<MasterDataMap> {
 
     } catch (error) {
         console.error('[MasterData] CSV fetch error:', error);
-        // エラー時は空オブジェクトを返す（アプリをクラッシュさせないため）
         return {};
     }
 }
@@ -178,29 +178,21 @@ export async function lookupMasterDataBatch(codes: string[]): Promise<MasterData
             result[code] = masterData[code];
         }
     }
-
     return result;
 }
 
 /**
  * 価格文字列をクレンジングして数値に変換
- * 「¥3,714」「￥3714」「3,714円」のようなパターンに対応
  */
 export function cleanPriceString(rawValue: unknown): number {
     if (rawValue === undefined || rawValue === null) return 0;
-
     const str = String(rawValue);
 
-    // エラー値チェック
     if (str.includes('#N/A') || str.includes('#ERROR') || str.includes('#REF') || str.includes('#VALUE')) {
         return 0;
     }
 
-    // 円マーク、全角円マーク、カンマ、全角カンマ、円、スペースを除去
-    let cleaned = str
-        .replace(/[¥￥円,、\s]/g, '');
-
-    // 全角数字を半角に変換
+    let cleaned = str.replace(/[¥￥円,、\s]/g, '');
     cleaned = cleaned.replace(/[０-９]/g, (s) =>
         String.fromCharCode(s.charCodeAt(0) - 0xFEE0)
     );
@@ -217,15 +209,7 @@ export type PriceMap = {
 };
 
 /**
- * シート2を使用して最新の株価を取得（IMPORTXML対応版）
- * 
- * 処理フロー:
- * 1. シート2の A列（A2以降）をクリアし銘柄コードを一括書き込み
- * 2. IMPORTXMLの反映を待機（5秒）
- * 3. B列から株価を読み取り、クレンジング処理を実行
- * 
- * @param codes 銘柄コードの配列（最大100件推奨）
- * @returns { [code: string]: number } 形式の株価マップ
+ * シート2を使用して最新の株価を取得（Google Sheets REST API + fetch版）
  */
 export async function fetchPricesViaSheet2(codes: string[]): Promise<PriceMap> {
     console.log(`[GoogleSheets] fetchPricesViaSheet2 開始: ${codes.length}件の銘柄`);
@@ -235,61 +219,95 @@ export async function fetchPricesViaSheet2(codes: string[]): Promise<PriceMap> {
         return {};
     }
 
-    console.log('[GoogleSheets] Step 1: Google認証を開始...');
-    const sheets = await getGoogleSheets();
-    console.log('[GoogleSheets] Step 1: Google認証完了');
+    try {
+        // Step 1: Access Token 取得
+        console.log('[GoogleSheets] Step 1: Access Token取得中...');
+        const accessToken = await getAccessToken();
+        const sheetId = getSheetId();
+        console.log('[GoogleSheets] Step 1: Access Token取得完了');
 
-    const sheetId = getSheetId();
-    console.log(`[GoogleSheets] シートID取得: ${sheetId.substring(0, 10)}...`);
+        // 共通ヘッダー
+        const headers = {
+            'Authorization': `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+        };
 
-    // Step 2: シート2の A列をクリア
-    console.log('[GoogleSheets] Step 2: シート2のA列をクリア中...');
-    await sheets.spreadsheets.values.clear({
-        spreadsheetId: sheetId,
-        range: 'シート2!A2:A500',
-    });
-    console.log('[GoogleSheets] Step 2: クリア完了');
+        // Step 2: シート2の A列をクリア (POST :clear)
+        console.log('[GoogleSheets] Step 2: シート2のA列をクリア中...');
+        const clearUrl = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/シート2!A2:A500:clear`;
+        const clearRes = await fetch(clearUrl, {
+            method: 'POST',
+            headers: headers,
+            body: JSON.stringify({}),
+        });
 
-    // Step 3: 銘柄コードを A列に書き込み
-    console.log('[GoogleSheets] Step 3: 銘柄コードを書き込み中...');
-    const values = codes.map(code => [code]);
-    await sheets.spreadsheets.values.update({
-        spreadsheetId: sheetId,
-        range: 'シート2!A2',
-        valueInputOption: 'RAW',
-        requestBody: {
-            values: values,
-        },
-    });
-    console.log(`[GoogleSheets] Step 3: ${codes.length}件のコードを書き込み完了`);
+        if (!clearRes.ok) {
+            const err = await clearRes.text();
+            throw new Error(`Clear failed: ${clearRes.status} ${err}`);
+        }
+        console.log('[GoogleSheets] Step 2: クリア完了');
 
-    // Step 4: IMPORTXMLの計算完了を待機（7秒 - 特定銘柄の取得漏れを防ぐため延長）
-    console.log('[GoogleSheets] Step 4: IMPORTXML計算待機中（7秒）...');
-    await new Promise(resolve => setTimeout(resolve, 7000));
-    console.log('[GoogleSheets] Step 4: 待機完了');
+        // Step 3: 銘柄コードを A列に書き込み (PUT ?valueInputOption=RAW)
+        console.log('[GoogleSheets] Step 3: 銘柄コードを書き込み中...');
+        const values = codes.map(code => [code]);
+        const updateUrl = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/シート2!A2?valueInputOption=RAW`;
 
-    // Step 5: B列から株価を読み取り
-    console.log('[GoogleSheets] Step 5: 株価データを読み取り中...');
-    const endRow = codes.length + 1; // A2から開始なので +1
-    const response = await sheets.spreadsheets.values.get({
-        spreadsheetId: sheetId,
-        range: `シート2!A2:B${endRow}`,
-    });
+        const updateRes = await fetch(updateUrl, {
+            method: 'PUT',
+            headers: headers,
+            body: JSON.stringify({
+                values: values
+            })
+        });
 
-    const rows = response.data.values || [];
-    const priceMap: PriceMap = {};
+        if (!updateRes.ok) {
+            const err = await updateRes.text();
+            throw new Error(`Update failed: ${updateRes.status} ${err}`);
+        }
+        console.log(`[GoogleSheets] Step 3: ${codes.length}件のコードを書き込み完了`);
 
-    for (const row of rows) {
-        const code = String(row[0] || '').split('.')[0].trim();
-        const priceRaw = row[1];
 
-        if (!code) continue;
+        // Step 4: IMPORTXMLの計算完了を待機（7秒）
+        console.log('[GoogleSheets] Step 4: IMPORTXML計算待機中（7秒）...');
+        await new Promise(resolve => setTimeout(resolve, 7000));
+        console.log('[GoogleSheets] Step 4: 待機完了');
 
-        // クレンジング関数を使用して円マーク等を除去
-        priceMap[code] = cleanPriceString(priceRaw);
+
+        // Step 5: B列から株価を読み取り (GET)
+        console.log('[GoogleSheets] Step 5: 株価データを読み取り中...');
+        const endRow = codes.length + 1; // A2から開始なので +1
+        const getUrl = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/シート2!A2:B${endRow}`;
+
+        const getRes = await fetch(getUrl, {
+            method: 'GET',
+            headers: headers,
+        });
+
+        if (!getRes.ok) {
+            const err = await getRes.text();
+            throw new Error(`Get failed: ${getRes.status} ${err}`);
+        }
+
+        const getData = await getRes.json();
+        const rows = getData.values || [];
+        const priceMap: PriceMap = {};
+
+        for (const row of rows) {
+            const code = String(row[0] || '').split('.')[0].trim();
+            const priceRaw = row[1];
+
+            if (!code) continue;
+
+            // クレンジング関数を使用して円マーク等を除去
+            priceMap[code] = cleanPriceString(priceRaw);
+        }
+
+        console.log(`[GoogleSheets] Step 5: ${Object.keys(priceMap).length}件の株価を取得完了`);
+        console.log('[GoogleSheets] fetchPricesViaSheet2 完了');
+        return priceMap;
+
+    } catch (error) {
+        console.error('[GoogleSheets] Error:', error);
+        return {}; // エラーハンドリング（空で返す）
     }
-
-    console.log(`[GoogleSheets] Step 5: ${Object.keys(priceMap).length}件の株価を取得完了`);
-    console.log('[GoogleSheets] fetchPricesViaSheet2 完了');
-    return priceMap;
 }
