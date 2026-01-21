@@ -42,7 +42,7 @@ export function HoldingsTable({ isSampleMode = false }: { isSampleMode?: boolean
     const supabase = createClient();
 
     // Fetch and Aggregate Data from Supabase
-    const fetchHoldings = async () => {
+    const fetchHoldings = useCallback(async () => {
         if (isSampleMode) return;
 
         const { data: { user } } = await supabase.auth.getUser();
@@ -60,7 +60,6 @@ export function HoldingsTable({ isSampleMode = false }: { isSampleMode?: boolean
 
         if (data) {
             // Aggregation Logic (Client-side merge)
-            // Separate rows in DB -> Aggregated view in UI
             const mergedMap = new Map<string, Holding>();
 
             data.forEach((row: any) => {
@@ -76,6 +75,11 @@ export function HoldingsTable({ isSampleMode = false }: { isSampleMode?: boolean
                     accountType: row.account_type || '特定',
                     sector: row.sector || '',
                     sector33: row.sector_33 || '',
+                    ir_rank: row.ir_rank,
+                    ir_score: row.ir_score,
+                    ir_detail: row.ir_detail,
+                    ir_flag: row.ir_flag,
+                    ir_date: row.ir_date,
                 };
 
                 const existing = mergedMap.get(item.code);
@@ -95,12 +99,17 @@ export function HoldingsTable({ isSampleMode = false }: { isSampleMode?: boolean
                         ...existing,
                         quantity: totalQty,
                         acquisitionPrice: newAvgPrice,
-                        price: item.price, // Use latest price (usually same if from same CSV, or strictly latest)
+                        price: item.price,
                         totalGainLoss: existing.totalGainLoss + item.totalGainLoss,
                         source: mergedSource,
                         accountType: mergedAccount,
                         sector: existing.sector || item.sector,
                         sector33: existing.sector33 || item.sector33,
+                        ir_rank: existing.ir_rank || item.ir_rank,
+                        ir_score: existing.ir_score || item.ir_score,
+                        ir_detail: existing.ir_detail || item.ir_detail,
+                        ir_flag: existing.ir_flag || item.ir_flag,
+                        ir_date: existing.ir_date || item.ir_date,
                     });
                 } else {
                     mergedMap.set(item.code, item);
@@ -108,12 +117,10 @@ export function HoldingsTable({ isSampleMode = false }: { isSampleMode?: boolean
             });
 
             setHoldings(Array.from(mergedMap.values()));
-
-            // Return user ID for auto-update trigger
             return user.id;
         }
         return null;
-    };
+    }, [isSampleMode]);
 
     // Initial Load + Auto Price Update on Login
     useEffect(() => {
@@ -131,18 +138,9 @@ export function HoldingsTable({ isSampleMode = false }: { isSampleMode?: boolean
                     console.log('[HoldingsTable] Auto-updating stock prices on login...');
                     setIsUpdating(true);
                     try {
-                        // Step 1: Update sector data
                         const sectorResult = await updateAllSectorData(userId);
-                        console.log('[HoldingsTable] Auto sector update:', sectorResult.message);
-
-                        // Step 2: Update stock prices
                         const priceResult = await updateAllStockPrices(userId);
-                        console.log('[HoldingsTable] Auto price update:', priceResult.message);
-
-                        // Refresh UI with updated data
                         await fetchHoldings();
-
-                        // Mark as updated for this session
                         sessionStorage.setItem(sessionKey, 'true');
                     } catch (error) {
                         console.error('[HoldingsTable] Auto-update error:', error);
@@ -154,7 +152,7 @@ export function HoldingsTable({ isSampleMode = false }: { isSampleMode?: boolean
         };
 
         initializeHoldings();
-    }, [isSampleMode]);
+    }, [isSampleMode, fetchHoldings]);
 
     // 4. Other Hooks
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -326,7 +324,6 @@ export function HoldingsTable({ isSampleMode = false }: { isSampleMode?: boolean
                     }));
 
                     const result = await updateHoldingAnalysisData(updateItems);
-                    await fetchHoldings();
                     alert(result.message);
                 } else {
                     alert("有効な分析データが見つかりませんでした");
@@ -350,17 +347,11 @@ export function HoldingsTable({ isSampleMode = false }: { isSampleMode?: boolean
 
                 // Auto-update
                 if (userId) {
-                    // Note: setIsLoading(true) is already active, so we just continue
-                    // We don't want to double-spinner, but "isUpdating" controls the button spinner.
-                    // For full screen overlay, we keep isLoading=true until everything finishes?
-                    // User request says: "isLoading gets false in finally".
-                    // So we should keep it true while updating prices.
                     setIsUpdating(true); // For the button indicator consistency
 
                     try {
                         const sectorResult = await updateAllSectorData(userId);
                         const priceResult = await updateAllStockPrices(userId);
-                        await fetchHoldings();
                         alert(`インポート完了！\n${sectorResult.message}\n${priceResult.message}`);
                     } catch (updateError) {
                         console.error('[HoldingsTable] Auto-update error:', updateError);
@@ -376,6 +367,8 @@ export function HoldingsTable({ isSampleMode = false }: { isSampleMode?: boolean
             console.error("Import Error:", error);
             alert("ファイルの読み込みに失敗しました");
         } finally {
+            console.log("【Import】データをリフレッシュします");
+            await fetchHoldings();
             setIsLoading(false);
             if (fileInputRef.current) fileInputRef.current.value = '';
         }
