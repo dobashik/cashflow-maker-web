@@ -60,57 +60,48 @@ const parseCSVLine = (line: string): string[] => {
  * Robust CSV Loader with Scoring
  * Reads file as both Shift_JIS and UTF-8, counts keywords, and picks the best match.
  */
+/**
+ * Robust CSV Loader with Strict Encoding Detection
+ * Reads file as ArrayBuffer and detects encoding based on keywords.
+ */
 export const loadCSV = async (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
-        const keywords = ['銘柄', 'コード', '取得', '数量', '口座', '特定', 'NISA'];
+        const reader = new FileReader();
 
-        // Helper to count keyword occurrences
-        const scoreContent = (text: string) => {
-            return keywords.reduce((acc, output) => acc + (text.includes(output) ? 1 : 0), 0);
-        };
+        reader.onload = (e) => {
+            try {
+                const buffer = e.target?.result as ArrayBuffer;
 
-        const readerSJIS = new FileReader();
-        const readerUTF8 = new FileReader();
+                // 1. Try UTF-8 first
+                const decoderUTF8 = new TextDecoder('utf-8');
+                const contentUTF8 = decoderUTF8.decode(buffer);
 
-        let contentSJIS = '';
-        let contentUTF8 = '';
-        let finished = 0;
+                // Keywords to identify valid content (SBI, Rakuten, or Analysis data)
+                const keywords = ["ランク", "総合スコア", "保有数量", "国内株式", "口座", "銘柄コード", "取得単価", "現在値"];
+                const hasUtf8Keywords = keywords.some(k => contentUTF8.includes(k));
 
-        const checkAndResolve = () => {
-            finished++;
-            if (finished < 2) return;
+                console.log("【CSV判定】UTF-8キーワード検知:", hasUtf8Keywords);
 
-            const scoreSJIS = scoreContent(contentSJIS);
-            const scoreUTF8 = scoreContent(contentUTF8);
-
-            console.log(`Encoding Scores - SJIS: ${scoreSJIS}, UTF8: ${scoreUTF8}`);
-
-            if (scoreSJIS >= scoreUTF8 && scoreSJIS > 0) {
-                console.log("Selected: Shift_JIS");
-                resolve(contentSJIS);
-            } else {
-                console.log("Selected: UTF-8");
-                if (contentUTF8.charCodeAt(0) === 0xFEFF) {
-                    contentUTF8 = contentUTF8.slice(1);
+                if (hasUtf8Keywords) {
+                    console.log("【CSV判定】決定エンコーディング: UTF-8");
+                    // Remove BOM if present
+                    const finalContent = contentUTF8.charCodeAt(0) === 0xFEFF ? contentUTF8.slice(1) : contentUTF8;
+                    resolve(finalContent);
+                } else {
+                    console.log("【CSV判定】決定エンコーディング: Shift-JIS");
+                    // Fallback to Shift-JIS (common for Japanese CSVs)
+                    const decoderSJIS = new TextDecoder('sjis');
+                    resolve(decoderSJIS.decode(buffer));
                 }
-                resolve(contentUTF8);
+            } catch (error) {
+                reject(error);
             }
         };
 
-        readerSJIS.onload = (e) => {
-            contentSJIS = e.target?.result as string || '';
-            checkAndResolve();
-        };
-        readerUTF8.onload = (e) => {
-            contentUTF8 = e.target?.result as string || '';
-            checkAndResolve();
-        };
+        reader.onerror = () => reject(reader.error);
 
-        readerSJIS.onerror = () => reject(readerSJIS.error);
-        readerUTF8.onerror = () => reject(readerUTF8.error);
-
-        readerSJIS.readAsText(file, 'Shift_JIS');
-        readerUTF8.readAsText(file, 'UTF-8');
+        // Read as ArrayBuffer to allow manual decoding
+        reader.readAsArrayBuffer(file);
     });
 };
 
@@ -299,4 +290,72 @@ export const parseRakutenCSV = (csvContent: string): Holding[] => {
     }
 
     return holdings;
+};
+
+/**
+ * Parse Analysis Data CSV
+ * Headers: "証券コード", "ランク", "総合スコア", "ランク詳細", "警告・注意フラグ", "分析日時"
+ */
+export const parseAnalysisCSV = (csvContent: string): Partial<Holding>[] => {
+    const lines = csvContent.split(/\r?\n/);
+    const updates: Partial<Holding>[] = [];
+
+    let headerIndex = -1;
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        if (line.includes('証券コード') && line.includes('ランク') && line.includes('総合スコア')) {
+            headerIndex = i;
+            break;
+        }
+    }
+
+    if (headerIndex === -1) {
+        console.error("Analysis CSV Header not found");
+        return [];
+    }
+
+    const headers = parseCSVLine(lines[headerIndex]);
+    const getIndex = (keys: string[]) => headers.findIndex(h => keys.some(k => h === k || h.includes(k)));
+
+    const colIndices = {
+        code: getIndex(['証券コード', 'code']),
+        rank: getIndex(['ランク', 'ir_rank']),
+        score: getIndex(['総合スコア', 'ir_score']),
+        detail: getIndex(['ランク詳細', 'ir_detail']),
+        flag: getIndex(['警告・注意フラグ', 'ir_flag']),
+        date: getIndex(['分析日時', 'ir_date', 'date']),
+    };
+
+    for (let i = headerIndex + 1; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line) continue;
+
+        const cells = parseCSVLine(line);
+        if (cells.length < 2) continue;
+
+        const codeRaw = cells[colIndices.code];
+        if (!codeRaw) continue;
+
+        // Clean code (e.g. "9432" or "9432.0" -> "9432")
+        const code = codeRaw.split('.')[0].trim();
+
+        if (!code || isNaN(parseInt(code))) continue;
+
+        const rank = cells[colIndices.rank] || '';
+        const score = parseNumber(cells[colIndices.score]);
+        const detail = cells[colIndices.detail] || '';
+        const flag = cells[colIndices.flag] || '';
+        const date = cells[colIndices.date] || '';
+
+        updates.push({
+            code,
+            ir_rank: rank,
+            ir_score: score,
+            ir_detail: detail,
+            ir_flag: flag,
+            ir_date: date,
+        });
+    }
+
+    return updates;
 };

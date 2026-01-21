@@ -251,3 +251,73 @@ export async function updateAllSectorData(userId: string): Promise<{ success: bo
     }
 }
 
+/**
+ * 分析データの更新アクション
+ * CSVインポートされた分析データを holdings テーブルに反映する
+ */
+export async function updateHoldingAnalysisData(
+    items: { code: string; ir_rank: string; ir_score: number; ir_detail: string; ir_flag: string; ir_date: string }[]
+): Promise<{ success: boolean; updatedCount: number; message: string }> {
+    try {
+        const supabase = await createClient();
+        const { data: { user } } = await supabase.auth.getUser();
+
+        if (!user) {
+            return { success: false, updatedCount: 0, message: 'ログインが必要です' };
+        }
+
+        if (items.length === 0) {
+            return { success: true, updatedCount: 0, message: '更新対象のデータがありません' };
+        }
+
+        // ユーザーの保有銘柄を取得（更新対象のみに絞るため）
+        const { data: holdings, error: fetchError } = await supabase
+            .from('holdings')
+            .select('id, code')
+            .eq('user_id', user.id);
+
+        if (fetchError || !holdings) {
+            console.error('Fetch Holdings Error:', fetchError);
+            return { success: false, updatedCount: 0, message: '保有データの取得に失敗しました' };
+        }
+
+        const holdingMap = new Map(holdings.map(h => [String(h.code).trim(), h.id]));
+        let updatedCount = 0;
+
+        for (const item of items) {
+            const holdingId = holdingMap.get(String(item.code).trim());
+            if (holdingId) {
+                const { error: updateError } = await supabase
+                    .from('holdings')
+                    .update({
+                        ir_rank: item.ir_rank,
+                        ir_score: item.ir_score,
+                        ir_detail: item.ir_detail,
+                        ir_flag: item.ir_flag,
+                        ir_date: item.ir_date,
+                        updated_at: new Date().toISOString()
+                    })
+                    .eq('id', holdingId)
+                    .eq('user_id', user.id);
+
+                if (!updateError) {
+                    updatedCount++;
+                } else {
+                    console.error(`Update Error for ${item.code}:`, updateError);
+                }
+            }
+        }
+
+        console.log(`[stockActions] Analysis Data Update: ${updatedCount} items updated.`);
+        return {
+            success: true,
+            updatedCount,
+            message: `${updatedCount}件の分析データを更新しました`
+        };
+
+    } catch (error) {
+        console.error('updateHoldingAnalysisData error:', error);
+        return { success: false, updatedCount: 0, message: 'サーバーエラーが発生しました' };
+    }
+}
+

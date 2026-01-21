@@ -19,6 +19,11 @@ export type Holding = {
     totalGainLoss: number;
     source: string[];
     accountType: AccountType;
+    ir_rank?: string;
+    ir_score?: number;
+    ir_detail?: string;
+    ir_flag?: string;
+    ir_date?: string;
 };
 
 export const EXPENSES: ExpenseBlock[] = [

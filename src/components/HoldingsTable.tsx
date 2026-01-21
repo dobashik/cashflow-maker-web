@@ -1,11 +1,11 @@
 
-import { TrendingUp, MoreHorizontal, FileDown, RefreshCcw } from 'lucide-react';
+import { TrendingUp, MoreHorizontal, FileDown, RefreshCcw, AlertTriangle, UploadCloud } from 'lucide-react';
 import { HOLDINGS, Holding } from '@/lib/mockData';
 import { motion, AnimatePresence, Variants } from 'framer-motion';
-import { useState, useRef, useEffect } from 'react';
-import { parseRakutenCSV, parseSBICSV, loadCSV } from '@/utils/csvParser';
+import { useState, useRef, useEffect, useCallback } from 'react';
+import { parseRakutenCSV, parseSBICSV, parseAnalysisCSV, loadCSV } from '@/utils/csvParser';
 import { createClient } from '@/utils/supabase/client';
-import { updateAllStockPrices, updateAllSectorData } from '@/app/actions/stockActions';
+import { updateAllStockPrices, updateAllSectorData, updateHoldingAnalysisData } from '@/app/actions/stockActions';
 
 import {
     DropdownMenu,
@@ -13,6 +13,25 @@ import {
     DropdownMenuItem,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+
+import {
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+    DialogDescription,
+} from "@/components/ui/dialog";
+
+// Helper for Rank Colors
+const getRankColor = (rank: string) => {
+    const r = rank?.toUpperCase();
+    if (r === 'S') return 'bg-yellow-100 text-yellow-700 ring-yellow-600/20';
+    if (r === 'A') return 'bg-emerald-100 text-emerald-700 ring-emerald-600/20';
+    if (r === 'B') return 'bg-blue-100 text-blue-700 ring-blue-600/20';
+    if (r === 'C') return 'bg-slate-100 text-slate-700 ring-slate-600/20';
+    if (r === 'D') return 'bg-rose-100 text-rose-700 ring-rose-600/20';
+    return 'bg-slate-50 text-slate-500';
+};
 
 export function HoldingsTable({ isSampleMode = false }: { isSampleMode?: boolean }) {
     const [holdings, setHoldings] = useState<Holding[]>(() => {
@@ -139,9 +158,10 @@ export function HoldingsTable({ isSampleMode = false }: { isSampleMode?: boolean
 
     // 4. Other Hooks
     const fileInputRef = useRef<HTMLInputElement>(null);
-    const [importType, setImportType] = useState<'sbi' | 'rakuten' | null>(null);
-    const importTypeRef = useRef<'sbi' | 'rakuten' | null>(null);
+    const [importMode, setImportMode] = useState<'SBI' | 'RAKUTEN' | 'ANALYSIS' | null>(null);
+    const [isDragOver, setIsDragOver] = useState(false);
     const [isUpdating, setIsUpdating] = useState(false);
+    const [isLoading, setIsLoading] = useState(false);
 
     // 5. Animation Variants
     const container = {
@@ -166,19 +186,32 @@ export function HoldingsTable({ isSampleMode = false }: { isSampleMode?: boolean
         })
     };
 
-    const handleImportClick = (type: 'sbi' | 'rakuten') => {
+    const handleImportClick = (mode: 'SBI' | 'RAKUTEN' | 'ANALYSIS') => {
         if (isSampleMode) {
             alert("インポート機能を利用するにはログインしてください");
             return;
         }
-
-        setImportType(type);
-        importTypeRef.current = type;
-        if (fileInputRef.current) {
-            fileInputRef.current.value = '';
-            fileInputRef.current.click();
-        }
+        setImportMode(mode);
     };
+
+    const handleDragOver = useCallback((e: React.DragEvent) => {
+        e.preventDefault();
+        setIsDragOver(true);
+    }, []);
+
+    const handleDragLeave = useCallback((e: React.DragEvent) => {
+        e.preventDefault();
+        setIsDragOver(false);
+    }, []);
+
+    const handleDrop = useCallback(async (e: React.DragEvent) => {
+        e.preventDefault();
+        setIsDragOver(false);
+        const file = e.dataTransfer.files?.[0];
+        if (file && importMode) {
+            await processFile(file, importMode);
+        }
+    }, [importMode]);
 
     // 手動株価更新ハンドラー
     const handleUpdatePrices = async () => {
@@ -215,7 +248,7 @@ export function HoldingsTable({ isSampleMode = false }: { isSampleMode?: boolean
     };
 
     // DB Save Logic (Delete & Insert)
-    const saveHoldingsToSupabase = async (newItems: Holding[], currentImportType: 'sbi' | 'rakuten') => {
+    const saveHoldingsToSupabase = async (newItems: Holding[], currentImportMode: 'SBI' | 'RAKUTEN') => {
         if (isSampleMode) return;
 
         const { data: { user } } = await supabase.auth.getUser();
@@ -224,7 +257,7 @@ export function HoldingsTable({ isSampleMode = false }: { isSampleMode?: boolean
             return;
         }
 
-        const targetTag = currentImportType === 'sbi' ? 'SBI' : 'Rakuten';
+        const targetTag = currentImportMode === 'SBI' ? 'SBI' : 'Rakuten';
 
         // Step A: Delete existing records for this source
         const { error: deleteError } = await supabase
@@ -269,37 +302,64 @@ export function HoldingsTable({ isSampleMode = false }: { isSampleMode?: boolean
         return user.id; // Return user ID for auto-update
     };
 
-    const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        const currentImportType = importTypeRef.current;
-        if (!file || !currentImportType) return;
+    const processFile = async (file: File, mode: 'SBI' | 'RAKUTEN' | 'ANALYSIS') => {
+        // 即座にモーダルを閉じてローディング開始
+        setImportMode(null);
+        setIsLoading(true);
 
         try {
             const content = await loadCSV(file);
-            let newHoldings: Holding[] = [];
 
-            if (currentImportType === 'sbi') {
+            if (mode === 'ANALYSIS') {
+                const analysisData = parseAnalysisCSV(content);
+                console.log("【Import】パース件数:", analysisData.length);
+                if (analysisData.length > 0) {
+                    console.log("【Import】先頭データ:", analysisData[0]);
+
+                    const updateItems = analysisData.map(d => ({
+                        code: d.code!,
+                        ir_rank: d.ir_rank || '',
+                        ir_score: d.ir_score || 0,
+                        ir_detail: d.ir_detail || '',
+                        ir_flag: d.ir_flag || '',
+                        ir_date: d.ir_date || ''
+                    }));
+
+                    const result = await updateHoldingAnalysisData(updateItems);
+                    await fetchHoldings();
+                    alert(result.message);
+                } else {
+                    alert("有効な分析データが見つかりませんでした");
+                }
+                return;
+            }
+
+            // Normal Holding CSV (SBI/Rakuten)
+            let newHoldings: Holding[] = [];
+            if (mode === 'SBI') {
                 newHoldings = parseSBICSV(content);
-            } else {
+            } else if (mode === 'RAKUTEN') {
                 newHoldings = parseRakutenCSV(content);
             }
 
+            console.log("【Import】パース件数:", newHoldings.length);
+
             if (newHoldings.length > 0) {
-                const userId = await saveHoldingsToSupabase(newHoldings, currentImportType);
+                console.log("【Import】先頭データ:", newHoldings[0]);
+                const userId = await saveHoldingsToSupabase(newHoldings, mode);
 
-                // Auto-update: セクター情報と株価を自動取得
+                // Auto-update
                 if (userId) {
-                    setIsUpdating(true);
+                    // Note: setIsLoading(true) is already active, so we just continue
+                    // We don't want to double-spinner, but "isUpdating" controls the button spinner.
+                    // For full screen overlay, we keep isLoading=true until everything finishes?
+                    // User request says: "isLoading gets false in finally".
+                    // So we should keep it true while updating prices.
+                    setIsUpdating(true); // For the button indicator consistency
+
                     try {
-                        // Step 1: セクター情報を取得・更新
                         const sectorResult = await updateAllSectorData(userId);
-                        console.log('[HoldingsTable] Sector update:', sectorResult.message);
-
-                        // Step 2: 最新株価を取得・更新
                         const priceResult = await updateAllStockPrices(userId);
-                        console.log('[HoldingsTable] Price update:', priceResult.message);
-
-                        // Refresh UI with updated data
                         await fetchHoldings();
                         alert(`インポート完了！\n${sectorResult.message}\n${priceResult.message}`);
                     } catch (updateError) {
@@ -312,14 +372,20 @@ export function HoldingsTable({ isSampleMode = false }: { isSampleMode?: boolean
             } else {
                 alert("読み込み可能なデータが見つかりませんでした");
             }
-
         } catch (error) {
             console.error("Import Error:", error);
             alert("ファイルの読み込みに失敗しました");
+        } finally {
+            setIsLoading(false);
+            if (fileInputRef.current) fileInputRef.current.value = '';
         }
+    };
 
-        // Reset input
-        if (fileInputRef.current) fileInputRef.current.value = '';
+    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (file && importMode) {
+            processFile(file, importMode);
+        }
     };
 
     return (
@@ -360,20 +426,72 @@ export function HoldingsTable({ isSampleMode = false }: { isSampleMode?: boolean
                         <DropdownMenuContent align="end" className="bg-white rounded-xl shadow-xl border border-slate-100 p-2 min-w-[200px]">
                             <DropdownMenuItem
                                 className="flex items-center gap-2 p-2 hover:bg-indigo-50 rounded-lg cursor-pointer text-slate-600 hover:text-indigo-900"
-                                onClick={() => handleImportClick('sbi')}
+                                onClick={() => handleImportClick('SBI')}
                             >
                                 <FileDown className="w-4 h-4" /> SBI証券 CSVインポート
                             </DropdownMenuItem>
                             <DropdownMenuItem
                                 className="flex items-center gap-2 p-2 hover:bg-indigo-50 rounded-lg cursor-pointer text-slate-600 hover:text-indigo-900"
-                                onClick={() => handleImportClick('rakuten')}
+                                onClick={() => handleImportClick('RAKUTEN')}
                             >
                                 <FileDown className="w-4 h-4" /> 楽天証券 CSVインポート
                             </DropdownMenuItem>
+                            <DropdownMenuItem
+                                className="flex items-center gap-2 p-2 hover:bg-indigo-50 rounded-lg cursor-pointer text-slate-600 hover:text-indigo-900"
+                                onClick={() => handleImportClick('ANALYSIS')}
+                            >
+                                <UploadCloud className="w-4 h-4" /> 分析データ取込
+                            </DropdownMenuItem>
                         </DropdownMenuContent>
                     </DropdownMenu>
+
+                    <Dialog open={!!importMode} onOpenChange={(open) => !open && setImportMode(null)}>
+                        <DialogContent className="sm:max-w-md">
+                            <DialogHeader>
+                                <DialogTitle>CSVファイルをインポート</DialogTitle>
+                                <DialogDescription>
+                                    {importMode === 'ANALYSIS' ? '分析データCSV' :
+                                        importMode === 'SBI' ? 'SBI証券の保有証券CSV' : '楽天証券の保有商品CSV'}
+                                    をここにドロップしてください。
+                                </DialogDescription>
+                            </DialogHeader>
+                            <div
+                                className={`
+                                    mt-4 border-2 border-dashed rounded-xl p-8 transition-colors text-center cursor-pointer
+                                    ${isDragOver ? 'border-indigo-500 bg-indigo-50' : 'border-slate-200 hover:border-indigo-300 hover:bg-slate-50'}
+                                `}
+                                onDragOver={handleDragOver}
+                                onDragLeave={handleDragLeave}
+                                onDrop={handleDrop}
+                                onClick={() => fileInputRef.current?.click()}
+                            >
+                                <UploadCloud className={`w-12 h-12 mx-auto mb-3 ${isDragOver ? 'text-indigo-500' : 'text-slate-300'}`} />
+                                <p className="text-sm font-medium text-slate-700">
+                                    ファイルをドラッグ＆ドロップ
+                                </p>
+                                <p className="text-xs text-slate-400 mt-1">
+                                    またはクリックしてファイルを選択
+                                </p>
+                            </div>
+                        </DialogContent>
+                    </Dialog>
                 </div>
             </div>
+
+
+            {/* Loading Overlay */}
+            {
+                isLoading && (
+                    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center backdrop-blur-sm">
+                        <div className="bg-white p-6 rounded-xl shadow-2xl flex flex-col items-center gap-4 animate-in fade-in zoom-in duration-200">
+                            <RefreshCcw className="w-8 h-8 text-indigo-600 animate-spin" />
+                            <p className="text-slate-700 font-medium text-lg">データを解析・更新中...</p>
+                            <p className="text-slate-500 text-sm">しばらくお待ちください</p>
+                        </div>
+                    </div>
+                )
+            }
+
             <p className="text-xs font-mono text-slate-400 uppercase tracking-wider flex-shrink-0">Holdings List</p>
             <p className="text-xs text-slate-400 mb-4 mt-1 flex-shrink-0">※株価は20分以上遅延している場合があります。</p>
 
@@ -381,6 +499,8 @@ export function HoldingsTable({ isSampleMode = false }: { isSampleMode?: boolean
                 <table className="w-full min-w-[1200px] border-collapse bg-white">
                     <thead className="bg-slate-50 sticky top-0 z-10 shadow-sm">
                         <tr className="text-xs font-bold text-slate-400 uppercase tracking-wider text-right">
+                            <th className="px-4 py-3 text-left whitespace-nowrap w-[80px]">Rank</th>
+                            <th className="px-4 py-3 text-left whitespace-nowrap w-[60px]">Score</th>
                             <th className="px-4 py-3 text-left whitespace-nowrap">コード</th>
                             <th className="px-4 py-3 text-left whitespace-nowrap">銘柄名</th>
                             <th className="px-4 py-3 text-left whitespace-nowrap">セクター</th>
@@ -432,6 +552,31 @@ export function HoldingsTable({ isSampleMode = false }: { isSampleMode?: boolean
                                         layout
                                         className="group hover:bg-indigo-50/30 transition-colors duration-200"
                                     >
+                                        <td className="px-4 py-3 whitespace-nowrap text-left">
+                                            <div className="flex items-center gap-2">
+                                                {stock.ir_rank ? (
+                                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm shadow-sm ring-1 ${getRankColor(stock.ir_rank)}`} title={`${stock.ir_detail || ''} (${stock.ir_date || ''})`}>
+                                                        {stock.ir_rank}
+                                                    </div>
+                                                ) : (
+                                                    <div className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center text-slate-300 text-xs font-medium">
+                                                        -
+                                                    </div>
+                                                )}
+                                                {stock.ir_flag && (
+                                                    <div className="text-rose-500 cursor-help" title={stock.ir_flag}>
+                                                        <AlertTriangle className="w-5 h-5 drop-shadow-sm" />
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </td>
+                                        <td className="px-4 py-3 whitespace-nowrap text-left">
+                                            {stock.ir_score ? (
+                                                <span className="font-bold text-slate-700 text-sm">{stock.ir_score}</span>
+                                            ) : (
+                                                <span className="text-slate-300">-</span>
+                                            )}
+                                        </td>
                                         <td className="px-4 py-3 whitespace-nowrap">
                                             <div className="w-12 h-8 rounded bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold text-xs ring-2 ring-transparent group-hover:ring-indigo-100 transition-all">
                                                 {stock.code}
@@ -500,6 +645,6 @@ export function HoldingsTable({ isSampleMode = false }: { isSampleMode?: boolean
                     </motion.tbody>
                 </table>
             </div>
-        </div>
+        </div >
     );
 }
