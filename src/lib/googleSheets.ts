@@ -219,95 +219,108 @@ export async function fetchPricesViaSheet2(codes: string[]): Promise<PriceMap> {
         return {};
     }
 
-    try {
-        // Step 1: Access Token 取得
-        console.log('[GoogleSheets] Step 1: Access Token取得中...');
-        const accessToken = await getAccessToken();
-        const sheetId = getSheetId();
-        console.log('[GoogleSheets] Step 1: Access Token取得完了');
+    const CHUNK_SIZE = 30;
+    const WAIT_TIME_MS = 15000;
+    const MAX_RETRIES_PER_CHUNK = 3;
 
-        // 共通ヘッダー
-        const headers = {
-            'Authorization': `Bearer ${accessToken}`,
-            'Content-Type': 'application/json',
-        };
-
-        // Step 2: シート2の A列をクリア (POST :clear)
-        console.log('[GoogleSheets] Step 2: シート2のA列をクリア中...');
-        const clearUrl = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/シート2!A2:A500:clear`;
-        const clearRes = await fetch(clearUrl, {
-            method: 'POST',
-            headers: headers,
-            body: JSON.stringify({}),
-        });
-
-        if (!clearRes.ok) {
-            const err = await clearRes.text();
-            throw new Error(`Clear failed: ${clearRes.status} ${err}`);
-        }
-        console.log('[GoogleSheets] Step 2: クリア完了');
-
-        // Step 3: 銘柄コードを A列に書き込み (PUT ?valueInputOption=RAW)
-        console.log('[GoogleSheets] Step 3: 銘柄コードを書き込み中...');
-        const values = codes.map(code => [code]);
-        const updateUrl = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/シート2!A2?valueInputOption=RAW`;
-
-        const updateRes = await fetch(updateUrl, {
-            method: 'PUT',
-            headers: headers,
-            body: JSON.stringify({
-                values: values
-            })
-        });
-
-        if (!updateRes.ok) {
-            const err = await updateRes.text();
-            throw new Error(`Update failed: ${updateRes.status} ${err}`);
-        }
-        console.log(`[GoogleSheets] Step 3: ${codes.length}件のコードを書き込み完了`);
-
-
-        // Step 4: IMPORTXMLの計算完了を待機（7秒）
-        console.log('[GoogleSheets] Step 4: IMPORTXML計算待機中（7秒）...');
-        await new Promise(resolve => setTimeout(resolve, 7000));
-        console.log('[GoogleSheets] Step 4: 待機完了');
-
-
-        // Step 5: B列から株価を読み取り (GET)
-        console.log('[GoogleSheets] Step 5: 株価データを読み取り中...');
-        const endRow = codes.length + 1; // A2から開始なので +1
-        const getUrl = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/シート2!A2:B${endRow}`;
-
-        const getRes = await fetch(getUrl, {
-            method: 'GET',
-            headers: headers,
-        });
-
-        if (!getRes.ok) {
-            const err = await getRes.text();
-            throw new Error(`Get failed: ${getRes.status} ${err}`);
-        }
-
-        const getData = await getRes.json();
-        const rows = getData.values || [];
-        const priceMap: PriceMap = {};
-
-        for (const row of rows) {
-            const code = String(row[0] || '').split('.')[0].trim();
-            const priceRaw = row[1];
-
-            if (!code) continue;
-
-            // クレンジング関数を使用して円マーク等を除去
-            priceMap[code] = cleanPriceString(priceRaw);
-        }
-
-        console.log(`[GoogleSheets] Step 5: ${Object.keys(priceMap).length}件の株価を取得完了`);
-        console.log('[GoogleSheets] fetchPricesViaSheet2 完了');
-        return priceMap;
-
-    } catch (error) {
-        console.error('[GoogleSheets] Error:', error);
-        return {}; // エラーハンドリング（空で返す）
+    // chunkに分割
+    const chunks: string[][] = [];
+    for (let i = 0; i < codes.length; i += CHUNK_SIZE) {
+        chunks.push(codes.slice(i, i + CHUNK_SIZE));
     }
+
+    console.log(`[GoogleSheets] バッチ処理開始: 全${chunks.length}チャンク (Chunk Size: ${CHUNK_SIZE})`);
+
+    const finalPriceMap: PriceMap = {};
+    const accessToken = await getAccessToken();
+    const sheetId = getSheetId();
+
+    const headers = {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+    };
+
+    for (let i = 0; i < chunks.length; i++) {
+        const chunkIndex = i + 1;
+        const currentChunk = chunks[i];
+        console.log(`[GoogleSheets] Chunk ${chunkIndex}/${chunks.length} 処理開始 (${currentChunk.length}件)...`);
+
+        let chunkSuccess = false;
+
+        // チャンクごとのリトライ処理
+        for (let attempt = 1; attempt <= MAX_RETRIES_PER_CHUNK; attempt++) {
+            if (chunkSuccess) break;
+
+            try {
+                if (attempt > 1) console.log(`[GoogleSheets] Chunk ${chunkIndex} - Retry ${attempt}...`);
+
+                // Step 1: シート2の A列をクリア
+                const clearUrl = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/シート2!A2:A500:clear`;
+                const clearRes = await fetch(clearUrl, {
+                    method: 'POST',
+                    headers: headers,
+                    body: JSON.stringify({}),
+                });
+                if (!clearRes.ok) throw new Error(`Clear failed: ${clearRes.status}`);
+
+                // Step 2: 銘柄コード書き込み
+                const values = currentChunk.map(code => [code]);
+                const updateUrl = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/シート2!A2?valueInputOption=RAW`;
+                const updateRes = await fetch(updateUrl, {
+                    method: 'PUT',
+                    headers: headers,
+                    body: JSON.stringify({ values: values })
+                });
+                if (!updateRes.ok) throw new Error(`Update failed: ${updateRes.status}`);
+
+                // Step 3: 計算待機
+                console.log(`[GoogleSheets] Chunk ${chunkIndex}: 待機中 (${WAIT_TIME_MS}ms)...`);
+                await new Promise(resolve => setTimeout(resolve, WAIT_TIME_MS));
+
+                // Step 4: 読み取り
+                const endRow = currentChunk.length + 1;
+                const getUrl = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/シート2!A2:B${endRow}`;
+                const getRes = await fetch(getUrl, { method: 'GET', headers: headers });
+
+                if (!getRes.ok) throw new Error(`Get failed: ${getRes.status}`);
+
+                const getData = await getRes.json();
+                const rows = getData.values || [];
+
+                let foundInChunk = 0;
+                for (const row of rows) {
+                    const code = String(row[0] || '').split('.')[0].trim();
+                    const priceRaw = row[1];
+                    if (!code) continue;
+
+                    const price = cleanPriceString(priceRaw);
+                    finalPriceMap[code] = price;
+                    if (price > 0) foundInChunk++;
+                }
+
+                console.log(`[GoogleSheets] Chunk ${chunkIndex}: ${foundInChunk}件の有効株価を取得`);
+
+                // 成功判定 (少なくともエラーなく完了)
+                chunkSuccess = true;
+
+            } catch (error) {
+                console.error(`[GoogleSheets] Chunk ${chunkIndex} Error (Attempt ${attempt}):`, error);
+                if (attempt < MAX_RETRIES_PER_CHUNK) {
+                    await new Promise(resolve => setTimeout(resolve, 2000));
+                }
+            }
+        }
+
+        if (!chunkSuccess) {
+            console.error(`[GoogleSheets] Chunk ${chunkIndex} は全リトライ失敗しました。スキップします。`);
+        }
+
+        // 次のチャンクへのクールダウン（少し待つ）
+        if (i < chunks.length - 1) {
+            await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+    }
+
+    console.log(`[GoogleSheets] 全バッチ処理完了. Total Fetched: ${Object.keys(finalPriceMap).length}件`);
+    return finalPriceMap;
 }

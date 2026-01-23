@@ -1,11 +1,11 @@
 
-import { TrendingUp, MoreHorizontal, FileDown, RefreshCcw, AlertTriangle, UploadCloud } from 'lucide-react';
+import { TrendingUp, MoreHorizontal, FileDown, RefreshCcw, AlertTriangle, UploadCloud, Trash2 } from 'lucide-react';
 import { HOLDINGS, Holding } from '@/lib/mockData';
 import { motion, AnimatePresence, Variants } from 'framer-motion';
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { parseRakutenCSV, parseSBICSV, parseAnalysisCSV, loadCSV } from '@/utils/csvParser';
 import { createClient } from '@/utils/supabase/client';
-import { updateAllStockPrices, updateAllSectorData, updateHoldingAnalysisData } from '@/app/actions/stockActions';
+import { updateAllStockPrices, updateAllSectorData, updateHoldingAnalysisData, saveHoldingsToSupabase, deleteAllHoldings, updateSpecificStockPrices } from '@/app/actions/stockActions';
 
 import {
     DropdownMenu,
@@ -71,7 +71,7 @@ export function HoldingsTable({ isSampleMode = false }: { isSampleMode?: boolean
                     acquisitionPrice: Number(row.acquisition_price),
                     totalGainLoss: Number(row.total_gain_loss),
                     dividendPerShare: Number(row.dividend_per_share),
-                    source: row.source || [], // text[]
+                    source: Array.isArray(row.source) ? row.source : (row.source ? [row.source] : []),
                     accountType: row.account_type || '特定',
                     sector: row.sector || '',
                     sector33: row.sector_33 || '',
@@ -160,6 +160,7 @@ export function HoldingsTable({ isSampleMode = false }: { isSampleMode?: boolean
     const [isDragOver, setIsDragOver] = useState(false);
     const [isUpdating, setIsUpdating] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
+    const [isAppendMode, setIsAppendMode] = useState(false);
 
     // 5. Animation Variants
     const container = {
@@ -209,7 +210,7 @@ export function HoldingsTable({ isSampleMode = false }: { isSampleMode?: boolean
         if (file && importMode) {
             await processFile(file, importMode);
         }
-    }, [importMode]);
+    }, [importMode, isAppendMode]);
 
     // 手動株価更新ハンドラー
     const handleUpdatePrices = async () => {
@@ -245,60 +246,27 @@ export function HoldingsTable({ isSampleMode = false }: { isSampleMode?: boolean
         }
     };
 
-    // DB Save Logic (Delete & Insert)
-    const saveHoldingsToSupabase = async (newItems: Holding[], currentImportMode: 'SBI' | 'RAKUTEN') => {
+    const handleDeleteAll = async () => {
         if (isSampleMode) return;
+        if (!confirm("本当に全てのデータを削除しますか？\nこの操作は取り消せません。")) return;
 
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) {
-            alert("セッションが切れました。ログインしてください。");
-            return;
+        setIsLoading(true);
+        try {
+            const result = await deleteAllHoldings();
+            alert(result.message);
+            if (result.success) {
+                await fetchHoldings();
+            }
+        } catch (error) {
+            console.error("Delete All Error:", error);
+            alert("削除中にエラーが発生しました");
+        } finally {
+            setIsLoading(false);
         }
-
-        const targetTag = currentImportMode === 'SBI' ? 'SBI' : 'Rakuten';
-
-        // Step A: Delete existing records for this source
-        const { error: deleteError } = await supabase
-            .from('holdings')
-            .delete()
-            .eq('user_id', user.id)
-            .contains('source', [targetTag]); // source @> '{Tag}'
-
-        if (deleteError) {
-            console.error("Delete Error:", deleteError);
-            alert("データの更新（削除）に失敗しました");
-            return;
-        }
-
-        // Step B: Insert new records
-        const dbRows = newItems.map(item => ({
-            user_id: user.id,
-            code: item.code,
-            name: item.name,
-            quantity: item.quantity,
-            price: item.price,
-            acquisition_price: item.acquisitionPrice,
-            total_gain_loss: item.totalGainLoss,
-            dividend_per_share: item.dividendPerShare,
-            source: item.source, // e.g. ['SBI']
-            account_type: item.accountType,
-            sector: item.sector,
-        }));
-
-        const { error: insertError } = await supabase
-            .from('holdings')
-            .insert(dbRows);
-
-        if (insertError) {
-            console.error("Insert Error:", insertError);
-            alert("データの保存に失敗しました");
-            return;
-        }
-
-        // Refresh UI
-        await fetchHoldings();
-        return user.id; // Return user ID for auto-update
     };
+
+
+
 
     const processFile = async (file: File, mode: 'SBI' | 'RAKUTEN' | 'ANALYSIS') => {
         // 即座にモーダルを閉じてローディング開始
@@ -343,7 +311,13 @@ export function HoldingsTable({ isSampleMode = false }: { isSampleMode?: boolean
 
             if (newHoldings.length > 0) {
                 console.log("【Import】先頭データ:", newHoldings[0]);
-                const userId = await saveHoldingsToSupabase(newHoldings, mode);
+                const result = await saveHoldingsToSupabase(newHoldings, mode, isAppendMode);
+
+                if (!result.success) {
+                    alert(result.message);
+                    return;
+                }
+                const userId = result.userId;
 
                 // Auto-update
                 if (userId) {
@@ -351,7 +325,9 @@ export function HoldingsTable({ isSampleMode = false }: { isSampleMode?: boolean
 
                     try {
                         const sectorResult = await updateAllSectorData(userId);
-                        const priceResult = await updateAllStockPrices(userId);
+                        // 部分更新に変更: 今回インポートしたコードのみを対象にする
+                        const targetCodes = newHoldings.map(h => h.code);
+                        const priceResult = await updateSpecificStockPrices(userId, targetCodes);
                         alert(`インポート完了！\n${sectorResult.message}\n${priceResult.message}`);
                     } catch (updateError) {
                         console.error('[HoldingsTable] Auto-update error:', updateError);
@@ -435,6 +411,12 @@ export function HoldingsTable({ isSampleMode = false }: { isSampleMode?: boolean
                             >
                                 <UploadCloud className="w-4 h-4" /> 分析データ取込
                             </DropdownMenuItem>
+                            <DropdownMenuItem
+                                className="flex items-center gap-2 p-2 hover:bg-rose-50 rounded-lg cursor-pointer text-rose-600 hover:text-rose-900 border-t border-slate-100 mt-1"
+                                onClick={handleDeleteAll}
+                            >
+                                <Trash2 className="w-4 h-4" /> 全データを削除
+                            </DropdownMenuItem>
                         </DropdownMenuContent>
                     </DropdownMenu>
 
@@ -465,6 +447,22 @@ export function HoldingsTable({ isSampleMode = false }: { isSampleMode?: boolean
                                 <p className="text-xs text-slate-400 mt-1">
                                     またはクリックしてファイルを選択
                                 </p>
+                            </div>
+
+                            <div className="mt-4 flex items-center space-x-2 justify-center">
+                                <input
+                                    type="checkbox"
+                                    id="appendMode"
+                                    checked={isAppendMode}
+                                    onChange={(e) => setIsAppendMode(e.target.checked)}
+                                    className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600"
+                                />
+                                <label
+                                    htmlFor="appendMode"
+                                    className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 text-slate-700 select-none cursor-pointer"
+                                >
+                                    既存のリストに追加する（前のデータを消さない）
+                                </label>
                             </div>
                         </DialogContent>
                     </Dialog>
