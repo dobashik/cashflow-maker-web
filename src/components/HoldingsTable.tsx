@@ -63,7 +63,10 @@ export function HoldingsTable({ isSampleMode = false }: { isSampleMode?: boolean
             const mergedMap = new Map<string, Holding>();
 
             data.forEach((row: any) => {
-                const item: Holding = {
+                // Determine source as array for processing
+                const rowSource = Array.isArray(row.source) ? row.source : (row.source ? [row.source] : []);
+
+                const item: any = {
                     code: row.code,
                     name: row.name,
                     quantity: Number(row.quantity),
@@ -71,7 +74,7 @@ export function HoldingsTable({ isSampleMode = false }: { isSampleMode?: boolean
                     acquisitionPrice: Number(row.acquisition_price),
                     totalGainLoss: Number(row.total_gain_loss),
                     dividendPerShare: Number(row.dividend_per_share),
-                    source: Array.isArray(row.source) ? row.source : (row.source ? [row.source] : []),
+                    source: rowSource,
                     accountType: row.account_type || '特定',
                     sector: row.sector || '',
                     sector33: row.sector_33 || '',
@@ -92,7 +95,9 @@ export function HoldingsTable({ isSampleMode = false }: { isSampleMode?: boolean
                         : 0;
 
                     // Merge Metadata
-                    const mergedSource = Array.from(new Set([...existing.source, ...item.source]));
+                    // existing.source is string (e.g. "SBI, Rakuten"), split back to array for merging
+                    const existingSources = typeof existing.source === 'string' ? existing.source.split(', ') : [existing.source];
+                    const mergedSource = Array.from(new Set([...existingSources, ...item.source]));
                     const mergedAccount = existing.accountType !== item.accountType ? 'Mixed' : existing.accountType;
 
                     mergedMap.set(item.code, {
@@ -101,8 +106,8 @@ export function HoldingsTable({ isSampleMode = false }: { isSampleMode?: boolean
                         acquisitionPrice: newAvgPrice,
                         price: item.price,
                         totalGainLoss: existing.totalGainLoss + item.totalGainLoss,
-                        source: mergedSource,
-                        accountType: mergedAccount,
+                        source: Array.isArray(mergedSource) ? mergedSource.join(', ') : mergedSource,
+                        accountType: Array.isArray(mergedAccount) ? mergedAccount.join(', ') : mergedAccount,
                         sector: existing.sector || item.sector,
                         sector33: existing.sector33 || item.sector33,
                         ir_rank: existing.ir_rank || item.ir_rank,
@@ -112,7 +117,10 @@ export function HoldingsTable({ isSampleMode = false }: { isSampleMode?: boolean
                         ir_date: existing.ir_date || item.ir_date,
                     });
                 } else {
-                    mergedMap.set(item.code, item);
+                    mergedMap.set(item.code, {
+                        ...item,
+                        source: Array.isArray(item.source) ? item.source.join(', ') : item.source
+                    });
                 }
             });
 
