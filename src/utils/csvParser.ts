@@ -190,7 +190,6 @@ export const parseSBICSV = (csvContent: string): Holding[] => {
             dividendPerShare: 0,
             sector: 'その他',
             sector33: '',
-            sector33: '',
             source: 'SBI',
             accountType: currentAccountType
         });
@@ -284,7 +283,6 @@ export const parseRakutenCSV = (csvContent: string): Holding[] => {
             totalGainLoss,
             dividendPerShare: 0,
             sector: 'その他',
-            sector33: '',
             sector33: '',
             source: 'Rakuten',
             accountType
