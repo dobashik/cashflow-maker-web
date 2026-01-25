@@ -33,11 +33,18 @@ const getRankColor = (rank: string) => {
     return 'bg-slate-50 text-slate-500';
 };
 
-export function HoldingsTable({ isSampleMode = false }: { isSampleMode?: boolean }) {
+export function HoldingsTable({ isSampleMode = false, onDataUpdate }: { isSampleMode?: boolean, onDataUpdate?: (data: Holding[]) => void }) {
     const [holdings, setHoldings] = useState<Holding[]>(() => {
         if (isSampleMode) return HOLDINGS;
         return [];
     });
+
+    // Share data with parent
+    useEffect(() => {
+        if (onDataUpdate) {
+            onDataUpdate(holdings);
+        }
+    }, [holdings, onDataUpdate]);
 
     const supabase = createClient();
 

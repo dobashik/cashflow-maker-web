@@ -66,49 +66,49 @@ export function DividendGame() {
             {/* Background Decor Removed for white card style */}
 
             {/* Left: The Life Tower (Expenses) */}
-            <div className="bg-white rounded-2xl shadow-sm p-8 w-full h-full flex flex-col md:flex-row items-end justify-center gap-12">
-                <div className="md:w-1/3 flex flex-col items-center w-full z-10">
-                    <h3 className="text-indigo-900 font-bold mb-1 flex items-center gap-2 text-2xl">
+            <div className="bg-white rounded-2xl shadow-sm p-8 w-full h-full flex flex-col md:flex-row items-end justify-around gap-16">
+                <div className="flex-1 max-w-lg flex flex-col items-center w-full z-10">
+                    <h3 className="text-indigo-900 font-bold mb-2 flex items-center gap-2 text-3xl">
                         生活費
                     </h3>
-                    <p className="text-xs font-mono text-indigo-400 mb-4 tracking-widest uppercase">Living expenses</p>
+                    <p className="text-sm font-mono text-indigo-400 mb-6 tracking-widest uppercase">Living expenses</p>
 
                     <motion.div
                         variants={containerVariants}
                         initial="hidden"
                         animate={isInView ? "visible" : "hidden"}
-                        className="w-full max-w-[220px] flex flex-col-reverse gap-1 p-4 bg-white/40 backdrop-blur-sm rounded-2xl border border-white shadow-xl relative"
+                        className="w-full flex flex-col-reverse gap-1 p-6 bg-white/40 backdrop-blur-sm rounded-3xl border border-white shadow-xl relative"
                     >
                         {EXPENSES.map((expense, index) => (
                             <motion.div
                                 key={expense.id}
                                 variants={blockVariants}
                                 className={cn(
-                                    "w-full rounded-lg flex items-center justify-between px-3 py-2 text-white font-bold text-sm shadow-md relative overflow-hidden group hover:scale-105 transition-transform cursor-pointer",
+                                    "w-full rounded-xl flex items-center justify-between px-5 py-3 text-white font-bold text-base shadow-md relative overflow-hidden group hover:scale-105 transition-transform cursor-pointer",
                                     expense.color
                                 )}
-                                style={{ height: `${(expense.amount / TOTAL_EXPENSES) * 300}px`, minHeight: '40px' }}
+                                style={{ height: `${(expense.amount / TOTAL_EXPENSES) * 350}px`, minHeight: '50px' }}
                             >
                                 <span className="z-10 drop-shadow-md">{expense.label}</span>
-                                <span className="z-10 text-xs opacity-90">¥{expense.amount.toLocaleString()}</span>
+                                <span className="z-10 text-sm opacity-90">¥{expense.amount.toLocaleString()}</span>
 
                                 {/* Shine effect */}
                                 <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent -translate-x-full group-hover:animate-shimmer" />
                             </motion.div>
                         ))}
                     </motion.div>
-                    <div className="mt-4 text-center text-sm text-slate-500 font-medium bg-white/60 px-4 py-2 rounded-full backdrop-blur-sm shadow-sm">
-                        毎月の生活費合計: <span className="text-slate-800 font-bold text-lg">¥{TOTAL_EXPENSES.toLocaleString()}</span>
+                    <div className="mt-6 text-center text-base text-slate-500 font-medium bg-white/60 px-6 py-3 rounded-full backdrop-blur-sm shadow-sm">
+                        毎月の生活費合計: <span className="text-slate-800 font-bold text-xl">¥{TOTAL_EXPENSES.toLocaleString()}</span>
                     </div>
                 </div>
 
                 {/* Right: The Magic Water (Dividends) */}
-                <div className="md:w-1/3 w-full flex flex-col items-center z-10">
-                    <h3 className="text-indigo-900 font-bold mb-1 flex items-center gap-2 text-lg text-center leading-tight">
-                        <Droplets className="w-5 h-5 text-cyan-500" /> 配当金での<br className="hidden md:block" />カバー率
+                <div className="flex-1 max-w-lg flex flex-col items-center w-full z-10">
+                    <h3 className="text-indigo-900 font-bold mb-2 flex items-center gap-2 text-2xl text-center leading-tight">
+                        <Droplets className="w-6 h-6 text-cyan-500" /> 配当金での<br className="hidden md:block" />カバー率
                     </h3>
 
-                    <div className="relative w-full max-w-[240px] h-[350px] bg-white rounded-[40px] border-4 border-indigo-50 shadow-[0_20px_60px_-12px_rgba(56,189,248,0.2)] overflow-hidden transform transition-all hover:shadow-cyan-200/50">
+                    <div className="relative w-full max-w-[280px] h-[400px] bg-white rounded-[50px] border-4 border-indigo-50 shadow-[0_20px_60px_-12px_rgba(56,189,248,0.2)] overflow-hidden transform transition-all hover:shadow-cyan-200/50">
                         {/* Simple bubbles/sparkles background */}
                         <div className="absolute inset-0 bg-slate-50"></div>
 
@@ -133,11 +133,11 @@ export function DividendGame() {
                                 initial={{ scale: 0, opacity: 0 }}
                                 animate={isInView ? { scale: 1, opacity: 1 } : { scale: 0, opacity: 0 }}
                                 transition={{ delay: 1.8, type: "spring" as const, bounce: 0.5 }}
-                                className="bg-white/90 backdrop-blur-xl px-6 py-4 rounded-3xl shadow-2xl border border-white/50 text-center"
+                                className="bg-white/90 backdrop-blur-xl px-8 py-5 rounded-3xl shadow-2xl border border-white/50 text-center"
                             >
-                                <div className="text-[10px] text-indigo-400 font-bold uppercase tracking-widest mb-1">Coverage</div>
-                                <div className="text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-cyan-600 tracking-tighter tabular-nums">
-                                    {displayPercent}<span className="text-2xl ml-1 text-indigo-400">%</span>
+                                <div className="text-xs text-indigo-400 font-bold uppercase tracking-widest mb-1">Coverage</div>
+                                <div className="text-6xl font-black text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-cyan-600 tracking-tighter tabular-nums">
+                                    {displayPercent}<span className="text-3xl ml-1 text-indigo-400">%</span>
                                 </div>
                             </motion.div>
                         </div>

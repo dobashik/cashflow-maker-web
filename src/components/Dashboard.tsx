@@ -8,41 +8,58 @@ import { PortfolioPie } from '@/components/PortfolioPie';
 import { HoldingsTable } from '@/components/HoldingsTable';
 import { DividendCalendar } from '@/components/DividendCalendar';
 
+import { Holding } from '@/lib/mockData';
+
 export function DashboardContent({ animationKey = 0, isSampleMode = false }: { animationKey?: number, isSampleMode?: boolean }) {
+    const [sharedHoldings, setSharedHoldings] = useState<Holding[]>([]);
+
     return (
         <div className="container mx-auto px-4 space-y-8">
-            {/* 1. Holdings List Section (Moved to Top) */}
-            <section id="holdings-list" className="w-full pt-4">
-                <motion.div key={`holdings-${animationKey}`} initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-                    <HoldingsTable isSampleMode={isSampleMode} />
+            {/* 1. 配当金生活進捗 (Dividend Progress) - Full Width */}
+            <section id="dividend-progress" className="w-full pt-4 scroll-mt-28">
+                <motion.div
+                    key={`progress-${animationKey}`}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.6 }}
+                >
+                    <DividendGame />
                 </motion.div>
             </section>
 
-            {/* 2. Main Dashboard Section (Analysis Report) */}
-            <section id="analysis-report">
+            {/* 2. 保有株式リスト (Holdings Table) */}
+            <section id="holdings-list" className="w-full scroll-mt-28">
+                <motion.div
+                    key={`holdings-${animationKey}`}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ delay: 0.2 }}
+                >
+                    <HoldingsTable isSampleMode={isSampleMode} onDataUpdate={setSharedHoldings} />
+                </motion.div>
+            </section>
+
+            {/* 3. セクター分析 (Sector Analysis) - Left: Pie, Right: List */}
+            <section id="sector-analysis" className="w-full scroll-mt-28">
                 <motion.div
                     key={`analysis-${animationKey}`}
-                    initial={{ opacity: 0, y: 50 }}
+                    initial={{ opacity: 0, y: 20 }}
                     whileInView={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.8, ease: "easeOut" }}
-                    viewport={{ once: true, amount: 0.2 }}
-                    className="grid grid-cols-1 md:grid-cols-2 gap-6 items-stretch"
+                    viewport={{ once: true }}
+                    transition={{ delay: 0.3 }}
                 >
-                    {/* Left Column: Dividend Coverage */}
-                    <div className="w-full">
-                        <DividendGame />
-                    </div>
-
-                    {/* Right Column: Sector Allocation */}
-                    <div className="w-full">
-                        <PortfolioPie />
-                    </div>
+                    <PortfolioPie holdings={sharedHoldings} />
                 </motion.div>
             </section>
 
-            {/* 3. Dividend Calendar Section */}
-            <section id="dividend-calendar">
-                <motion.div key={`calendar-${animationKey}`} initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+            {/* 4. 月別配当カレンダー (Dividend Calendar) */}
+            <section id="dividend-calendar" className="w-full scroll-mt-28">
+                <motion.div
+                    key={`calendar-${animationKey}`}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ delay: 0.4 }}
+                >
                     <DividendCalendar />
                 </motion.div>
             </section>
@@ -64,7 +81,7 @@ export function Dashboard() {
             {/* Spacer for fixed header */}
             <div className="h-24"></div>
 
-            <DashboardContent animationKey={animationKey} />
+            <DashboardContent animationKey={animationKey} isSampleMode={false} />
         </div>
     );
 }

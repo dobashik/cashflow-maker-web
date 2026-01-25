@@ -90,6 +90,13 @@ export function Header({ onRefreshAnimations }: HeaderProps) {
                 <div className="flex items-center gap-6">
                     <nav className="hidden md:flex gap-4">
                         <a
+                            href="#dividend-progress"
+                            onClick={(e) => handleClick(e, 'dividend-progress')}
+                            className="text-sm font-medium text-slate-500 hover:text-indigo-600 transition-colors"
+                        >
+                            配当金カバー率
+                        </a>
+                        <a
                             href="#holdings-list"
                             onClick={(e) => handleClick(e, 'holdings-list')}
                             className="text-sm font-medium text-slate-500 hover:text-indigo-600 transition-colors"
@@ -97,11 +104,11 @@ export function Header({ onRefreshAnimations }: HeaderProps) {
                             保有株式リスト
                         </a>
                         <a
-                            href="#analysis-report"
-                            onClick={(e) => handleClick(e, 'analysis-report')}
+                            href="#sector-analysis"
+                            onClick={(e) => handleClick(e, 'sector-analysis')}
                             className="text-sm font-medium text-slate-500 hover:text-indigo-600 transition-colors"
                         >
-                            分析レポート
+                            セクター分析
                         </a>
                         <a
                             href="#dividend-calendar"
