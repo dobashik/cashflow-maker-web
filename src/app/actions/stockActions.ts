@@ -188,7 +188,6 @@ export async function updateAllSectorData(userId: string): Promise<{ success: bo
             .from('holdings')
             .select('id, code, sector')
             .eq('user_id', userId)
-            .eq('user_id', userId)
             .or('sector.is.null,sector.eq.,sector.eq.その他');
 
         if (fetchError) {
@@ -483,6 +482,83 @@ export async function deleteAllHoldings(): Promise<{ success: boolean; message: 
 }
 
 /**
+ * 指定ソースのデータのみを削除
+ */
+export async function deleteHoldingsBySource(source: 'SBI' | 'Rakuten'): Promise<{ success: boolean; message: string }> {
+    try {
+        const supabase = await createClient();
+        const { data: { user } } = await supabase.auth.getUser();
+
+        if (!user) {
+            return { success: false, message: "セッションが切れました。ログインしてください。" };
+        }
+
+        const { error } = await supabase
+            .from('holdings')
+            .delete()
+            .eq('user_id', user.id)
+            .eq('source', source); // ソースでフィルタリング
+
+        if (error) {
+            console.error("Delete By Source Error:", error);
+            return { success: false, message: `${source}のデータ削除に失敗しました` };
+        }
+
+        const sourceLabel = source === 'SBI' ? 'SBI証券' : '楽天証券';
+        return { success: true, message: `${sourceLabel}のデータを削除しました` };
+    } catch (error) {
+        console.error("deleteHoldingsBySource error:", error);
+        return { success: false, message: "サーバーエラーが発生しました" };
+    }
+}
+
+/**
+ * 銘柄の配当情報（配当金・配当月）を更新
+ * ※ 同じユーザーの同じ銘柄コードの全レコードを更新します
+ */
+export async function updateHoldingDividend(
+    code: string,
+    dividendPerShare: number,
+    dividendMonths: number[]
+): Promise<{ success: boolean; message: string }> {
+    try {
+        const supabase = await createClient();
+        const { data: { user } } = await supabase.auth.getUser();
+
+        if (!user) {
+            return { success: false, message: "セッションが切れました。ログインしてください。" };
+        }
+
+        // 入力チェック
+        if (!code) {
+            return { success: false, message: "銘柄コードが不明です" };
+        }
+
+        // DB更新
+        // 同じ銘柄コードを持つ全ての保有レコードを更新する
+        const { error } = await supabase
+            .from('holdings')
+            .update({
+                dividend_per_share: dividendPerShare,
+                dividend_months: dividendMonths,
+                updated_at: new Date().toISOString()
+            })
+            .eq('user_id', user.id)
+            .eq('code', code);
+
+        if (error) {
+            console.error("Update Holding Dividend Error:", error);
+            return { success: false, message: "配当情報の更新に失敗しました" };
+        }
+
+        return { success: true, message: "配当情報を保存しました" };
+    } catch (error) {
+        console.error("updateHoldingDividend error:", error);
+        return { success: false, message: "サーバーエラーが発生しました" };
+    }
+}
+
+/**
  * 指定した銘柄コードの株価のみを更新（部分更新）
  * インポート直後の即時反映などに使用
  */
@@ -557,4 +633,3 @@ export async function updateSpecificStockPrices(userId: string, targetCodes: str
         };
     }
 }
-

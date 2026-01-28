@@ -24,6 +24,7 @@ export type Holding = {
     ir_detail?: string;
     ir_flag?: string;
     ir_date?: string;
+    dividendMonths?: number[]; // e.g. [3, 9]
 };
 
 export const EXPENSES: ExpenseBlock[] = [

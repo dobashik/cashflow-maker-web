@@ -176,7 +176,7 @@ export function PortfolioPie({ holdings = [] }: { holdings?: Holding[] }) {
                                         })}
                                     </Pie>
                                     <Tooltip
-                                        formatter={(value: number) => `¥${value.toLocaleString()}`}
+                                        formatter={(value: any) => `¥${Number(value).toLocaleString()}`}
                                         contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)' }}
                                     />
                                 </PieChart>
