@@ -85,6 +85,7 @@ export function HoldingsTable({ isSampleMode = false, onDataUpdate }: { isSample
                     acquisitionPrice: Number(row.acquisition_price),
                     totalGainLoss: Number(row.total_gain_loss),
                     dividendPerShare: Number(row.dividend_per_share),
+                    fiscalYearMonth: row.fiscal_year_month,
                     dividendMonths: row.dividend_months || [], // Fetch dividend months
                     source: rowSource,
                     accountType: row.account_type || '特定',
@@ -134,7 +135,8 @@ export function HoldingsTable({ isSampleMode = false, onDataUpdate }: { isSample
                         ir_flag: existing.ir_flag || item.ir_flag,
                         ir_date: existing.ir_date || item.ir_date,
                         dividendMonths: mergedMonths, // Use merged months
-                        dividendPerShare: item.dividendPerShare || existing.dividendPerShare // Prefer latest
+                        dividendPerShare: item.dividendPerShare || existing.dividendPerShare, // Prefer latest
+                        fiscalYearMonth: item.fiscalYearMonth || existing.fiscalYearMonth // Prefer latest
                     });
                 } else {
                     mergedMap.set(item.code, {
@@ -144,7 +146,7 @@ export function HoldingsTable({ isSampleMode = false, onDataUpdate }: { isSample
                 }
             });
 
-            setHoldings(Array.from(mergedMap.values()));
+            setHoldings(Array.from(mergedMap.values()).sort((a, b) => a.code.localeCompare(b.code)));
             return user.id;
         }
         return null;
@@ -194,6 +196,7 @@ export function HoldingsTable({ isSampleMode = false, onDataUpdate }: { isSample
     const [editingStock, setEditingStock] = useState<Holding | null>(null);
     const [editDividend, setEditDividend] = useState<number>(0);
     const [editMonths, setEditMonths] = useState<number[]>([]);
+    const [editFiscalMonth, setEditFiscalMonth] = useState<number | null>(null);
 
     // 5. Animation Variants
     const container = {
@@ -413,13 +416,14 @@ export function HoldingsTable({ isSampleMode = false, onDataUpdate }: { isSample
         setEditingStock(stock);
         setEditDividend(stock.dividendPerShare || 0);
         setEditMonths(stock.dividendMonths || []);
+        setEditFiscalMonth(stock.fiscalYearMonth || null);
     };
 
     const handleSaveDividend = async () => {
         if (!editingStock) return;
         setIsLoading(true);
         try {
-            const result = await updateHoldingDividend(editingStock.code, editDividend, editMonths);
+            const result = await updateHoldingDividend(editingStock.code, editDividend, editMonths, editFiscalMonth || undefined);
             if (result.success) {
                 await fetchHoldings();
                 setEditingStock(null);
@@ -507,13 +511,13 @@ export function HoldingsTable({ isSampleMode = false, onDataUpdate }: { isSample
                             <div className="border-t border-slate-100 my-1"></div>
 
                             <DropdownMenuItem
-                                className="flex items-center gap-2 p-2 hover:bg-indigo-50 rounded-lg cursor-pointer text-slate-600 hover:text-indigo-900"
+                                className="flex items-center gap-2 p-2 hover:bg-rose-50 rounded-lg cursor-pointer text-rose-600 hover:text-rose-900"
                                 onClick={() => handleDeleteSource('SBI')}
                             >
                                 <Banknote className="w-4 h-4" /> SBI証券のデータのみ削除
                             </DropdownMenuItem>
                             <DropdownMenuItem
-                                className="flex items-center gap-2 p-2 hover:bg-indigo-50 rounded-lg cursor-pointer text-slate-600 hover:text-indigo-900"
+                                className="flex items-center gap-2 p-2 hover:bg-rose-50 rounded-lg cursor-pointer text-rose-600 hover:text-rose-900"
                                 onClick={() => handleDeleteSource('Rakuten')}
                             >
                                 <Banknote className="w-4 h-4" /> 楽天証券のデータのみ削除
@@ -608,20 +612,55 @@ export function HoldingsTable({ isSampleMode = false, onDataUpdate }: { isSample
                                     </div>
                                 </div>
 
-                                {/* IR BANK Link */}
-                                <div className="flex justify-center">
+                                {/* Yahoo Finance Links */}
+                                <div className="flex justify-center gap-4">
                                     <a
-                                        href={`https://irbank.net/${editingStock?.code}/dividend`}
+                                        href={`https://finance.yahoo.co.jp/quote/${editingStock?.code}.T/profile`}
                                         target="_blank"
                                         rel="noopener noreferrer"
-                                        className="inline-flex items-center gap-2 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 px-4 py-2 rounded-full text-sm font-bold transition-colors border border-emerald-100"
+                                        className="inline-flex items-center gap-2 bg-slate-100 text-slate-600 hover:bg-indigo-50 hover:text-indigo-600 px-4 py-2 rounded-full text-sm font-bold transition-colors border border-slate-200"
                                     >
-                                        <ExternalLink className="w-4 h-4" /> 📊 IR BANKで配当情報を確認する
+                                        <ExternalLink className="w-4 h-4" /> 🏢 企業情報（決算月）
+                                    </a>
+                                    <a
+                                        href={`https://finance.yahoo.co.jp/quote/${editingStock?.code}.T/dividend`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="inline-flex items-center gap-2 bg-slate-100 text-slate-600 hover:bg-indigo-50 hover:text-indigo-600 px-4 py-2 rounded-full text-sm font-bold transition-colors border border-slate-200"
+                                    >
+                                        <ExternalLink className="w-4 h-4" /> 💰 配当情報
                                     </a>
                                 </div>
 
                                 {/* Input Form */}
                                 <div className="space-y-6 pt-2">
+                                    {/* Fiscal Year Month */}
+                                    <div className="space-y-2">
+                                        <label htmlFor="fiscalMonth" className={labelStyle}>
+                                            <Calendar className="w-4 h-4 text-indigo-500" /> 決算月
+                                        </label>
+                                        <select
+                                            id="fiscalMonth"
+                                            value={editFiscalMonth || ''}
+                                            onChange={(e) => {
+                                                const val = Number(e.target.value);
+                                                setEditFiscalMonth(val);
+                                                // Auto-set dividend months
+                                                if (val > 0) {
+                                                    const m1 = (val + 3) > 12 ? (val + 3) - 12 : (val + 3);
+                                                    const m2 = (val + 9) > 12 ? (val + 9) - 12 : (val + 9);
+                                                    setEditMonths([m1, m2].sort((a, b) => a - b));
+                                                }
+                                            }}
+                                            className={inputStyle}
+                                        >
+                                            <option value="">選択してください</option>
+                                            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(m => (
+                                                <option key={m} value={m}>{m}月決算</option>
+                                            ))}
+                                        </select>
+                                    </div>
+
                                     <div className="space-y-2">
                                         <label htmlFor="dividend" className={labelStyle}>
                                             <Banknote className="w-4 h-4 text-indigo-500" /> 年間一株配当（円）
@@ -706,6 +745,7 @@ export function HoldingsTable({ isSampleMode = false, onDataUpdate }: { isSample
                             <th className="px-4 py-3 whitespace-nowrap">総資産</th>
                             <th className="px-4 py-3 whitespace-nowrap">損益</th>
                             <th className="px-4 py-3 whitespace-nowrap">1株配当</th>
+                            <th className="px-4 py-3 whitespace-nowrap">優待/配当月</th>
                             <th className="px-4 py-3 whitespace-nowrap">配当金総額</th>
                             <th className="px-4 py-3 whitespace-nowrap text-center w-[60px]">編集</th>
                         </tr>
@@ -835,6 +875,11 @@ export function HoldingsTable({ isSampleMode = false, onDataUpdate }: { isSample
                                                     <TrendingUp className="w-3 h-3" /> {yieldPercent.toFixed(2)}%
                                                 </div>
                                             )}
+                                        </td>
+                                        <td className="px-4 py-3 text-right whitespace-nowrap text-xs text-slate-500">
+                                            {stock.dividendMonths && stock.dividendMonths.length > 0
+                                                ? stock.dividendMonths.join(', ') + '月'
+                                                : '-'}
                                         </td>
                                         <td className="px-4 py-3 text-right font-bold text-indigo-600 whitespace-nowrap">
                                             {formatYen(totalDividends)}

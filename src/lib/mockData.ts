@@ -25,6 +25,7 @@ export type Holding = {
     ir_flag?: string;
     ir_date?: string;
     dividendMonths?: number[]; // e.g. [3, 9]
+    fiscalYearMonth?: number; // 決算月 (1-12)
 };
 
 export const EXPENSES: ExpenseBlock[] = [

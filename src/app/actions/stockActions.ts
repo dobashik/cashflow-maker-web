@@ -519,7 +519,8 @@ export async function deleteHoldingsBySource(source: 'SBI' | 'Rakuten'): Promise
 export async function updateHoldingDividend(
     code: string,
     dividendPerShare: number,
-    dividendMonths: number[]
+    dividendMonths: number[],
+    fiscalYearMonth?: number
 ): Promise<{ success: boolean; message: string }> {
     try {
         const supabase = await createClient();
@@ -541,6 +542,7 @@ export async function updateHoldingDividend(
             .update({
                 dividend_per_share: dividendPerShare,
                 dividend_months: dividendMonths,
+                fiscal_year_month: fiscalYearMonth,
                 updated_at: new Date().toISOString()
             })
             .eq('user_id', user.id)
