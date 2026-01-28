@@ -756,7 +756,7 @@ export function HoldingsTable({ isSampleMode = false, onDataUpdate }: { isSample
                         initial="hidden"
                         animate="show"
                     >
-                        <AnimatePresence mode="wait">
+                        <AnimatePresence mode="popLayout">
                             {holdings.map((stock, i) => {
                                 const totalDividends = stock.quantity * stock.dividendPerShare;
                                 const totalAssets = stock.quantity * stock.price;

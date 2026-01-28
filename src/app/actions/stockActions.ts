@@ -550,13 +550,14 @@ export async function updateHoldingDividend(
 
         if (error) {
             console.error("Update Holding Dividend Error:", error);
-            return { success: false, message: "配当情報の更新に失敗しました" };
+            console.error("Error Details:", error.message, error.details, error.hint);
+            return { success: false, message: `配当情報の更新に失敗しました: ${error.message}` };
         }
 
         return { success: true, message: "配当情報を保存しました" };
-    } catch (error) {
+    } catch (error: any) {
         console.error("updateHoldingDividend error:", error);
-        return { success: false, message: "サーバーエラーが発生しました" };
+        return { success: false, message: `サーバーエラーが発生しました: ${error?.message || 'Unknown error'}` };
     }
 }
 
