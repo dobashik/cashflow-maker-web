@@ -356,9 +356,10 @@ function aggregateHoldings(items: Holding[]): Holding[] {
                 : 0;
 
             // Account Type 結合 ("特定" + "NISA" -> "特定, NISA")
+            // 重複を防ぐためにSetを使用
             const accounts = new Set(existing.accountType.split(',').map(s => s.trim()));
             accounts.add(item.accountType);
-            const mergedAccount = Array.from(accounts).join(', ');
+            const mergedAccount = Array.from(accounts).filter(Boolean).join(', ');
 
             map.set(key, {
                 ...existing,
@@ -366,10 +367,13 @@ function aggregateHoldings(items: Holding[]): Holding[] {
                 acquisitionPrice: newAvgPrice,
                 totalGainLoss: existing.totalGainLoss + item.totalGainLoss,
                 accountType: mergedAccount,
-                // Price, Sector, Name等は最新(item)または既存(existing)のどちらかを優先
-                // ここでは後勝ち(item)にしておく
+                // Price は最新(item)を優先しつつ、なければ既存
                 price: item.price || existing.price,
+                // ユーザー入力項目等は既存優先、あるいはマージ
+                // existingの値があればそれを維持する（CSVには含まれない情報のため）
                 sector: existing.sector || item.sector,
+                dividendMonths: existing.dividendMonths || item.dividendMonths,
+                fiscalYearMonth: existing.fiscalYearMonth || item.fiscalYearMonth,
             });
         } else {
             map.set(key, { ...item });
@@ -395,10 +399,57 @@ export async function saveHoldingsToSupabase(
         // 0. ソースの厳格な特定
         const targetSource = currentImportMode === 'SBI' ? 'SBI' : 'Rakuten';
 
-        // 1. データの事前集約
-        const aggregatedItems = aggregateHoldings(newItems);
+        let combinedItems: Holding[] = [...newItems];
 
-        // 2. DB用データ作成
+        // 1. 追加モードの場合、DBから既存データを取得してマージ候補に加える
+        if (isAppendMode) {
+            // 既存のデータを取得（ソースが一致するもの）
+            const { data: existingRows, error: fetchError } = await supabase
+                .from('holdings')
+                .select('*')
+                .eq('user_id', user.id)
+                .eq('source', targetSource);
+
+            if (fetchError) {
+                console.error("Fetch Existing Error:", fetchError);
+                return { success: false, message: "既存データの取得に失敗しました" };
+            }
+
+            if (existingRows && existingRows.length > 0) {
+                // DBデータをHolding型に変換
+                const existingHoldings: Holding[] = existingRows.map(row => ({
+                    code: row.code,
+                    name: row.name,
+                    quantity: row.quantity,
+                    price: row.price,
+                    dividendPerShare: row.dividend_per_share,
+                    sector: row.sector,
+                    sector33: '', // DBにはないため空文字
+                    acquisitionPrice: row.acquisition_price,
+                    totalGainLoss: row.total_gain_loss,
+                    source: row.source, // 'SBI' or 'Rakuten'
+                    accountType: row.account_type,
+                    // 追加情報のマッピング
+                    dividendMonths: row.dividend_months,
+                    fiscalYearMonth: row.fiscal_year_month,
+                    // IR情報
+                    ir_rank: row.ir_rank,
+                    ir_score: row.ir_score,
+                    ir_detail: row.ir_detail,
+                    ir_flag: row.ir_flag,
+                    ir_date: row.ir_date,
+                }));
+
+                // DBデータと新規データを結合
+                combinedItems = [...existingHoldings, ...newItems];
+            }
+        }
+
+        // 2. データの集約（名寄せ）
+        // existingItemsとnewItemsで同一銘柄がある場合、ここでマージされる
+        const aggregatedItems = aggregateHoldings(combinedItems);
+
+        // 3. DB用データ作成
         const dbRows = aggregatedItems.map(item => ({
             user_id: user.id,
             code: item.code,
@@ -411,15 +462,14 @@ export async function saveHoldingsToSupabase(
             source: targetSource,
             account_type: item.accountType, // e.g. "特定, NISA"
             sector: item.sector,
+            // マージされたメタデータをDBに保存
+            dividend_months: item.dividendMonths,
+            fiscal_year_month: item.fiscalYearMonth,
             updated_at: new Date().toISOString()
         }));
 
         // Case A: Normal Mode (Not Append) -> 指定ソースの古いデータを削除
         if (!isAppendMode) {
-            // currentImportMode に対応する source のデータを削除
-            // 例: currentImportMode='SBI' -> source='SBI' のデータを削除
-            const targetSource = currentImportMode === 'SBI' ? 'SBI' : 'Rakuten';
-
             const { error: deleteError } = await supabase
                 .from('holdings')
                 .delete()
@@ -434,7 +484,7 @@ export async function saveHoldingsToSupabase(
 
         // Case B: Save (Upsert)
         // conflict target: user_id, code, source
-
+        // マージ済みのデータを保存する
         const { error: upsertError } = await supabase
             .from('holdings')
             .upsert(dbRows, { onConflict: 'user_id, code, source' });
