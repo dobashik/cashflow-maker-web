@@ -85,83 +85,26 @@ export type UpdateResult = {
  * 2. シート2経由で最新株価を取得
  * 3. holdingsテーブルのpriceカラムを更新
  */
+/**
+ * 全銘柄の株価を一括更新（手動更新ボタン用）
+ * 
+ * 修正: 負荷軽減のため、スプレッドシートへのアクセスを廃止。
+ * データベース（stocksテーブル）はCronジョブによって定期的に更新されるため、
+ * ここでは画面の再検証（revalidatePath）のみ行い、ユーザーには最新データを表示します。
+ */
 export async function updateAllStockPrices(userId: string): Promise<UpdateResult> {
     try {
-        const supabase = await createClient();
+        // サーバーサイドキャッシュのクリア（画面更新）
+        const { revalidatePath } = await import('next/cache');
+        revalidatePath('/', 'layout');
 
-        // Step 1: holdings テーブルから銘柄コードを取得
-        const { data: holdings, error: fetchError } = await supabase
-            .from('holdings')
-            .select('id, code')
-            .eq('user_id', userId);
-
-        if (fetchError) {
-            console.error('[stockActions] Failed to fetch holdings:', fetchError);
-            return {
-                success: false,
-                updatedCount: 0,
-                pricesFound: 0,
-                message: 'データの取得に失敗しました',
-            };
-        }
-
-        if (!holdings || holdings.length === 0) {
-            return {
-                success: true,
-                updatedCount: 0,
-                pricesFound: 0,
-                message: '更新対象の銘柄がありません',
-            };
-        }
-
-        // 重複排除した銘柄コードリスト（String().trim() で正規化）
-        const uniqueCodes = [...new Set(holdings.map(h => String(h.code).trim()))];
-        console.log(`[stockActions] Fetching prices for ${uniqueCodes.length} unique codes`);
-
-        // Step 2: シート2経由で株価を取得
-        const priceMap = await fetchPricesViaSheet2(uniqueCodes);
-        const pricesFound = Object.values(priceMap).filter(p => p > 0).length;
-
-        // Step 3: Stocksテーブルを更新
-        let updatedCount = 0;
-        let failedCount = 0;
-
-        // 一括更新用データ作成
-        const updates = uniqueCodes.map(code => {
-            const newPrice = priceMap[code];
-            const priceToSet = (newPrice && newPrice > 0) ? newPrice : 0;
-
-            if (priceToSet > 0) return { code, price: priceToSet, updated_at: new Date().toISOString() };
-            return null;
-        }).filter(u => u !== null);
-
-        if (updates.length > 0) {
-            const { error: updateError } = await supabase
-                .from('stocks')
-                .upsert(updates as any, { onConflict: 'code' }); // Priceを更新
-
-            if (updateError) {
-                console.error(`[stockActions] Failed to update stocks:`, updateError);
-            } else {
-                updatedCount = updates.length;
-            }
-        }
-
-        failedCount = uniqueCodes.length - updatedCount;
-
-        if (failedCount > 0) {
-            console.log(`[stockActions] ${failedCount}件の銘柄で株価取得に失敗しました`);
-        }
-
-        console.log(`[stockActions] Updated ${updatedCount} holdings with new prices`);
+        console.log('[stockActions] Manual update requested. Triggered revalidatePath.');
 
         return {
             success: true,
-            updatedCount,
-            pricesFound,
-            message: failedCount > 0
-                ? `${updatedCount}件の株価を更新しました（${failedCount}件は取得に失敗）`
-                : `${updatedCount}件の株価を更新しました`,
+            updatedCount: 0,
+            pricesFound: 0,
+            message: '最新データを表示しました（株価はサーバーが自動更新しています）',
         };
     } catch (error) {
         console.error('[stockActions] updateAllStockPrices error:', error);
@@ -169,7 +112,7 @@ export async function updateAllStockPrices(userId: string): Promise<UpdateResult
             success: false,
             updatedCount: 0,
             pricesFound: 0,
-            message: '株価更新中にエラーが発生しました',
+            message: '更新処理中にエラーが発生しました',
         };
     }
 }
@@ -647,6 +590,12 @@ export async function updateHoldingDividend(
  * 指定した銘柄コードの株価のみを更新（部分更新）
  * インポート直後の即時反映などに使用
  */
+/**
+ * 指定した銘柄コードの株価のみを更新（部分更新）
+ * 
+ * 修正: 「新規銘柄」のみを対象に外部取得を行い、既存銘柄はDBの値をそのまま使用する。
+ * これにより、既存ユーザーのインポート時のAPI負荷をゼロにする。
+ */
 export async function updateSpecificStockPrices(userId: string, targetCodes: string[]): Promise<UpdateResult> {
     try {
         const supabase = await createClient();
@@ -660,19 +609,55 @@ export async function updateSpecificStockPrices(userId: string, targetCodes: str
             };
         }
 
-        // 重複排除
-        const uniqueCodes = [...new Set(targetCodes.map(c => String(c).trim()))];
-        console.log(`[stockActions] Updating specific ${uniqueCodes.length} codes`);
+        // リクエストされたコードの正規化と重複排除
+        const requestedCodes = [...new Set(targetCodes.map(c => String(c).trim()))];
+        console.log(`[stockActions] Request to update ${requestedCodes.length} codes`);
 
-        // Step 1: シート2経由で株価を取得
-        // (fetchPricesViaSheet2 内部でバッチ処理されるので大量でもOK)
-        const priceMap = await fetchPricesViaSheet2(uniqueCodes);
+        // Step 1: 既にstocksテーブルに存在する銘柄を確認
+        // API負荷削減のため、既存銘柄は外部取得・更新を行わない
+        const { data: existingStocks, error: checkError } = await supabase
+            .from('stocks')
+            .select('code')
+            .in('code', requestedCodes);
+
+        if (checkError) {
+            console.error('[stockActions] Failed to check existing stocks:', checkError);
+            // 安全のため、全件対象として続行するか、エラーにするか。ここではログ出して全件トライ（またはエラー）
+            // エラーを返すとインポートフローが止まる可能性があるので、既存チェック失敗時は空リスト扱い（=全件新規扱い）にする手もあるが、
+            // 安全側に倒して「取得失敗扱い」にするか、そのまま続行するか。
+            // ここでは続行するが、existingStocksを空と仮定すると全件フェッチしてしまい負荷対策にならない。
+            // なのでエラーリターンする。
+            return {
+                success: false,
+                updatedCount: 0,
+                pricesFound: 0,
+                message: '既存データ確認中にエラーが発生しました',
+            };
+        }
+
+        const existingCodeSet = new Set(existingStocks?.map(s => s.code) || []);
+
+        // Step 2: 完全に新規の銘柄だけを特定
+        const newCodes = requestedCodes.filter(c => !existingCodeSet.has(c));
+        console.log(`[stockActions] Found ${newCodes.length} NEW stocks to fetch (Skipped ${existingCodeSet.size} existing)`);
+
+        if (newCodes.length === 0) {
+            return {
+                success: true,
+                updatedCount: 0,
+                pricesFound: existingCodeSet.size, // 既存データがあるので「見つかった」とみなすこともできるが、更新数は0
+                message: '全ての銘柄データは取得済みです（外部アクセスなし）',
+            };
+        }
+
+        // Step 3: 新規銘柄のみシート2経由で株価を取得
+        const priceMap = await fetchPricesViaSheet2(newCodes);
         const pricesFound = Object.values(priceMap).filter(p => p > 0).length;
 
-        // Step 2: Stocksテーブルを更新
+        // Step 4: Stocksテーブルに新規保存
         let updatedCount = 0;
 
-        const updates = uniqueCodes.map(code => {
+        const updates = newCodes.map(code => {
             const newPrice = priceMap[code];
             if (newPrice !== undefined && newPrice > 0) {
                 return {
@@ -692,15 +677,15 @@ export async function updateSpecificStockPrices(userId: string, targetCodes: str
             if (!updateError) {
                 updatedCount = updates.length;
             } else {
-                console.error('[stockActions] Failed to update specific stocks:', updateError);
+                console.error('[stockActions] Failed to save new stocks:', updateError);
             }
         }
 
         return {
             success: true,
             updatedCount,
-            pricesFound,
-            message: `${updatedCount}件の株価を部分更新しました`,
+            pricesFound: pricesFound + existingCodeSet.size, // 新規取得分 + 既存分
+            message: `${updatedCount}件の新規銘柄データを取得しました`,
         };
 
     } catch (error) {
