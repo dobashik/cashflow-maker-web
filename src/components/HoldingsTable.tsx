@@ -61,7 +61,13 @@ export function HoldingsTable({ isSampleMode = false, onDataUpdate }: { isSample
 
         const { data, error } = await supabase
             .from('holdings')
-            .select('*')
+            .select(`
+                *,
+                stocks (
+                    price,
+                    sector
+                )
+            `)
             .eq('user_id', user.id);
 
         if (error) {
@@ -77,20 +83,35 @@ export function HoldingsTable({ isSampleMode = false, onDataUpdate }: { isSample
                 // Determine source as array for processing
                 const rowSource = Array.isArray(row.source) ? row.source : (row.source ? [row.source] : []);
 
+                // Stocksマスタのデータを優先使用
+                // row.stocks は配列またはオブジェクト（1対1ならオブジェクトだが、もし定義が配列なら[0]）
+                // 外部キー結合なので、stocksが入ってくる。
+                const masterPrice = row.stocks?.price;
+                const masterSector = row.stocks?.sector;
+
+                // priceが0やnullの場合はholdingsのデータ(row.price)をフォールバックとして使うか？
+                // 要件は「stocksテーブルのデータを参照して表示」。
+                // もしstocksが未作成（移行ラグなど）の場合はholdingsを使う安全策をとる。
+                const effectivePrice = (masterPrice !== undefined && masterPrice !== null) ? Number(masterPrice) : Number(row.price);
+                const effectiveSector = (masterSector !== undefined && masterSector !== null) ? masterSector : (row.sector || '');
+
                 const item: any = {
                     code: row.code,
                     name: row.name,
                     quantity: Number(row.quantity),
-                    price: Number(row.price),
+                    price: effectivePrice,
                     acquisitionPrice: Number(row.acquisition_price),
-                    totalGainLoss: Number(row.total_gain_loss),
+                    totalGainLoss: Number(row.total_gain_loss), // これは現在の価格に依存するはずだが、DBのtotal_gain_lossは計算済み値を持っているのか？
+                    // もしpriceが変わったらここも再計算が必要だが、frontendで再計算しているならOK。
+                    // ここではDBの値をそのまま使っているが、priceがmaster由来になるとズレる可能性がある。
+                    // frontendで再計算ロジック(mergedMap内)があるか確認。
                     dividendPerShare: Number(row.dividend_per_share),
                     fiscalYearMonth: row.fiscal_year_month,
                     dividendMonths: row.dividend_months || [], // Fetch dividend months
                     source: rowSource,
                     accountType: row.account_type || '特定',
-                    sector: row.sector || '',
-                    sector33: row.sector_33 || '',
+                    sector: effectiveSector,
+                    sector33: row.sector_33 || '', // sector_33 は廃止傾向だが一旦維持
                     ir_rank: row.ir_rank,
                     ir_score: row.ir_score,
                     ir_detail: row.ir_detail,
@@ -118,13 +139,25 @@ export function HoldingsTable({ isSampleMode = false, onDataUpdate }: { isSample
                     const newMonths = item.dividendMonths || [];
                     const mergedMonths = Array.from(new Set([...existingMonths, ...newMonths])).sort((a, b) => a - b);
 
+                    // Total Gain/Loss Recalculation based on NEW price (master price)
+                    // existing.totalGainLoss + item.totalGainLoss はDB値の単純合算だが、
+                    // priceが変わったので再計算したほうが正確。
+                    // calculation: (Current Price - Avg Acquisition Price) * Total Qty
+                    // しかしここでの `totalGainLoss` はDB保存値。
+                    // 表示用には `(price - acquisitionPrice) * quantity` をリアルタイム計算している箇所が render 内にあるはず。
+                    // 確認: render内 `const totalAssets = stock.quantity * stock.price;` 
+                    // `const gainLoss = stock.totalGainLoss;` -> これはDB値を使っている。
+                    // Master Priceを使うなら、Gain/Lossもここで再計算すべき。
+                    // DBの total_gain_loss は「取得時の計算」や「入稿時の計算」か？ 
+                    // 通常時価評価額 - 取得価額。
+                    const recalcTotalGainLoss = (item.price * totalQty) - (newAvgPrice * totalQty);
 
                     mergedMap.set(item.code, {
                         ...existing,
                         quantity: totalQty,
                         acquisitionPrice: newAvgPrice,
-                        price: item.price,
-                        totalGainLoss: existing.totalGainLoss + item.totalGainLoss,
+                        price: item.price, // Master Price
+                        totalGainLoss: recalcTotalGainLoss, // Recalculated
                         source: Array.isArray(mergedSource) ? mergedSource.join(', ') : mergedSource,
                         accountType: Array.isArray(mergedAccount) ? mergedAccount.join(', ') : mergedAccount,
                         sector: existing.sector || item.sector,
@@ -139,8 +172,12 @@ export function HoldingsTable({ isSampleMode = false, onDataUpdate }: { isSample
                         fiscalYearMonth: item.fiscalYearMonth || existing.fiscalYearMonth // Prefer latest
                     });
                 } else {
+                    // Initial calculation for single item
+                    const recalcTotalGainLoss = (item.price * item.quantity) - (item.acquisitionPrice * item.quantity);
+
                     mergedMap.set(item.code, {
                         ...item,
+                        totalGainLoss: recalcTotalGainLoss, // Recalculate to match master price
                         source: Array.isArray(item.source) ? item.source.join(', ') : item.source
                     });
                 }

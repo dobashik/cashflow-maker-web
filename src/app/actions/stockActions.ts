@@ -124,31 +124,34 @@ export async function updateAllStockPrices(userId: string): Promise<UpdateResult
         // Step 3: 各holdingレコードを更新（取得失敗した銘柄はprice: 0を明示的に設定）
         let updatedCount = 0;
         let failedCount = 0;
-        for (const holding of holdings) {
-            const normalizedCode = String(holding.code).trim();
-            const newPrice = priceMap[normalizedCode];
+        // Step 3: Stocksテーブルを更新
+        // updatedCount, failedCount are already declared above.
+
+        // 一括更新用データ作成
+        const updates = uniqueCodes.map(code => {
+            const newPrice = priceMap[code];
             const priceToSet = (newPrice && newPrice > 0) ? newPrice : 0;
 
-            const { error: updateError } = await supabase
-                .from('holdings')
-                .update({
-                    price: priceToSet,
-                    updated_at: new Date().toISOString(),
-                })
-                .eq('id', holding.id)
-                .eq('user_id', userId);
+            if (priceToSet > 0) return { code, price: priceToSet, updated_at: new Date().toISOString() };
+            return null;
+        }).filter(u => u !== null);
 
-            if (!updateError) {
-                if (priceToSet > 0) {
-                    updatedCount++;
-                } else {
-                    failedCount++;
-                    console.warn(`[stockActions] Price fetch failed for ${holding.code}, set to 0`);
-                }
+        if (updates.length > 0) {
+            const { error: updateError } = await supabase
+                .from('stocks')
+                .upsert(updates as any, { onConflict: 'code' }); // Priceを更新
+
+            if (updateError) {
+                console.error(`[stockActions] Failed to update stocks:`, updateError);
             } else {
-                console.error(`[stockActions] Failed to update ${holding.code}:`, updateError);
+                updatedCount = updates.length;
             }
         }
+
+        failedCount = uniqueCodes.length - updatedCount;
+
+        // Holdingsのupdated_atも更新すると親切だが、PriceはStocksにあるのでHoldings自体は変更なしとみなすこともできる。
+        // リクエスト要件は「Masterの価格が更新されれば両方に反映」。Holdingsテーブル自体の更新は必須ではない。
 
         if (failedCount > 0) {
             console.log(`[stockActions] ${failedCount}件の銘柄で株価取得に失敗しました`);
@@ -214,24 +217,30 @@ export async function updateAllSectorData(userId: string): Promise<{ success: bo
         const sectorData = await enrichHoldingsWithSectorData(uniqueCodes);
 
         // Step 3: 各holdingレコードを更新（コードの型を正規化して照合）
+        // Step 3: Stocksテーブルを更新
         let updatedCount = 0;
-        for (const holding of holdings) {
-            const normalizedCode = String(holding.code).trim();
-            const sector = sectorData[normalizedCode];
-            if (sector) {
-                const { error: updateError } = await supabase
-                    .from('holdings')
-                    .update({
-                        name: sector.name || undefined,
-                        sector: sector.sector,
-                        updated_at: new Date().toISOString(),
-                    })
-                    .eq('id', holding.id)
-                    .eq('user_id', userId);
 
-                if (!updateError) {
-                    updatedCount++;
-                }
+        const updates = uniqueCodes.map(code => {
+            const sector = sectorData[code];
+            if (sector) {
+                return {
+                    code: code,
+                    sector: sector.sector,
+                    updated_at: new Date().toISOString()
+                };
+            }
+            return null;
+        }).filter(Boolean);
+
+        if (updates.length > 0) {
+            const { error: updateError } = await supabase
+                .from('stocks')
+                .upsert(updates as any, { onConflict: 'code' }); // Sectorを更新
+
+            if (!updateError) {
+                updatedCount = updates.length;
+            } else {
+                console.error('[stockActions] Failed to update stocks sector:', updateError);
             }
         }
 
@@ -445,6 +454,34 @@ export async function saveHoldingsToSupabase(
             }
         }
 
+        // 1.5 Stocksマスタへの登録（新規コードが存在する場合）
+        // 結合されたアイテムからユニークなコードを抽出
+        const uniqueCodes = [...new Set(combinedItems.map(item => String(item.code).trim()))];
+
+        if (uniqueCodes.length > 0) {
+            // 既存のStocksを確認（または onConflict ignore で一括挿入）
+            // "price" と "sector" は初期値 null でも良いが、もしCSVに情報があれば使ってもよい。
+            // しかしCSVにはセクターや現在値が含まれていない場合も多い（保有CSVなど）。
+            // ここではシンプルに「存在しなければ作成」を行う。
+
+            const stocksToUpsert = uniqueCodes.map(code => ({
+                code: code,
+                // price, sector は既存があれば維持したいので、onConflict で update しない、
+                // あるいは update しても updated_at だけ変えるなど。
+                // ここでは「無視」が一番安全だが、Supabaseの upsert(ignoreDuplicates: true) を使う。
+            }));
+
+            const { error: stocksError } = await supabase
+                .from('stocks')
+                .upsert(stocksToUpsert, { onConflict: 'code', ignoreDuplicates: true });
+
+            if (stocksError) {
+                console.error("Stocks Master Insert Error:", stocksError);
+                // マスタ登録に失敗しても、一旦Holdingsへの保存は試みるか、エラーにするか。
+                // FK制約がある場合失敗するので、ここはエラーログを出して続行（FKエラーになればキャッチされる）
+            }
+        }
+
         // 2. データの集約（名寄せ）
         // existingItemsとnewItemsで同一銘柄がある場合、ここでマージされる
         const aggregatedItems = aggregateHoldings(combinedItems);
@@ -637,35 +674,30 @@ export async function updateSpecificStockPrices(userId: string, targetCodes: str
         const priceMap = await fetchPricesViaSheet2(uniqueCodes);
         const pricesFound = Object.values(priceMap).filter(p => p > 0).length;
 
-        // Step 2: holdingsテーブルを更新
+        // Step 2: Stocksテーブルを更新
         let updatedCount = 0;
 
-        // コードごとにクエリを発行する
-        const { data: holdings, error: fetchError } = await supabase
-            .from('holdings')
-            .select('id, code')
-            .eq('user_id', userId)
-            .in('code', uniqueCodes);
-
-        if (fetchError || !holdings) {
-            console.error('[stockActions] Failed to fetch holdings:', fetchError);
-            return { success: false, updatedCount: 0, pricesFound: 0, message: 'DB参照エラー' };
-        }
-
-        for (const holding of holdings) {
-            const code = String(holding.code).trim();
+        const updates = uniqueCodes.map(code => {
             const newPrice = priceMap[code];
-
             if (newPrice !== undefined && newPrice > 0) {
-                const { error: updateError } = await supabase
-                    .from('holdings')
-                    .update({
-                        price: newPrice,
-                        updated_at: new Date().toISOString(),
-                    })
-                    .eq('id', holding.id);
+                return {
+                    code: code,
+                    price: newPrice,
+                    updated_at: new Date().toISOString(),
+                };
+            }
+            return null;
+        }).filter(Boolean);
 
-                if (!updateError) updatedCount++;
+        if (updates.length > 0) {
+            const { error: updateError } = await supabase
+                .from('stocks')
+                .upsert(updates as any, { onConflict: 'code' });
+
+            if (!updateError) {
+                updatedCount = updates.length;
+            } else {
+                console.error('[stockActions] Failed to update specific stocks:', updateError);
             }
         }
 
