@@ -21,6 +21,7 @@ import {
     MasterDataMap
 } from '@/lib/googleSheets';
 import { createClient } from '@/utils/supabase/server';
+import { createServiceRoleClient } from '@/utils/supabase/service-role';
 
 /**
  * シート2を使用して最新の株価を取得
@@ -121,11 +122,9 @@ export async function updateAllStockPrices(userId: string): Promise<UpdateResult
         const priceMap = await fetchPricesViaSheet2(uniqueCodes);
         const pricesFound = Object.values(priceMap).filter(p => p > 0).length;
 
-        // Step 3: 各holdingレコードを更新（取得失敗した銘柄はprice: 0を明示的に設定）
+        // Step 3: Stocksテーブルを更新
         let updatedCount = 0;
         let failedCount = 0;
-        // Step 3: Stocksテーブルを更新
-        // updatedCount, failedCount are already declared above.
 
         // 一括更新用データ作成
         const updates = uniqueCodes.map(code => {
@@ -149,9 +148,6 @@ export async function updateAllStockPrices(userId: string): Promise<UpdateResult
         }
 
         failedCount = uniqueCodes.length - updatedCount;
-
-        // Holdingsのupdated_atも更新すると親切だが、PriceはStocksにあるのでHoldings自体は変更なしとみなすこともできる。
-        // リクエスト要件は「Masterの価格が更新されれば両方に反映」。Holdingsテーブル自体の更新は必須ではない。
 
         if (failedCount > 0) {
             console.log(`[stockActions] ${failedCount}件の銘柄で株価取得に失敗しました`);
@@ -216,7 +212,6 @@ export async function updateAllSectorData(userId: string): Promise<{ success: bo
         // Step 2: マスタデータからセクター情報を取得
         const sectorData = await enrichHoldingsWithSectorData(uniqueCodes);
 
-        // Step 3: 各holdingレコードを更新（コードの型を正規化して照合）
         // Step 3: Stocksテーブルを更新
         let updatedCount = 0;
 
@@ -716,5 +711,82 @@ export async function updateSpecificStockPrices(userId: string, targetCodes: str
             pricesFound: 0,
             message: '部分更新中にエラーが発生しました',
         };
+    }
+}
+
+/**
+ * Cronジョブ用: マスターデータの自動更新機能
+ * 
+ * @param mode 'full' | 'retry'
+ * - full: 全銘柄を更新
+ * - retry: 最終更新から一定時間経過しても更新されていない（=失敗した）銘柄のみ更新（例: 25分以上前）
+ */
+export async function updateMasterStockPrices(mode: 'full' | 'retry' = 'full'): Promise<UpdateResult> {
+    try {
+        console.log(`[stockActions] Starting master update in ${mode} mode`);
+        const supabase = createServiceRoleClient(); // Admin権限で操作
+
+        // 1. 対象銘柄の抽出
+        let query = supabase.from('stocks').select('code, updated_at');
+
+        if (mode === 'retry') {
+            // 現在時刻より25分以上前のレコードを「更新失敗」または「未更新」とみなす
+            // Cronは30分おきなので、25分前=前回の回で更新されなかったもの
+            const threshold = new Date(Date.now() - 25 * 60 * 1000).toISOString();
+            query = query.lt('updated_at', threshold);
+        }
+
+        const { data: stocks, error: fetchError } = await query;
+
+        if (fetchError) {
+            console.error('[stockActions] fetch stocks error:', fetchError);
+            return { success: false, updatedCount: 0, pricesFound: 0, message: fetchError.message };
+        }
+
+        if (!stocks || stocks.length === 0) {
+            console.log('[stockActions] No stocks to update');
+            return { success: true, updatedCount: 0, pricesFound: 0, message: '更新対象なし' };
+        }
+
+        const codes = stocks.map(s => s.code);
+        console.log(`[stockActions] Updating ${codes.length} codes`);
+
+        // 2. Google Sheets から価格取得
+        const priceMap = await fetchPricesViaSheet2(codes);
+        const pricesFound = Object.values(priceMap).filter(p => p > 0).length;
+
+        // 3. Stocksテーブル更新
+        // Upsert用のデータ作成
+        const updates = codes.map(code => {
+            const newPrice = priceMap[code];
+            if (newPrice !== undefined && newPrice > 0) {
+                return {
+                    code: code,
+                    price: newPrice,
+                    updated_at: new Date().toISOString(),
+                };
+            }
+            return null;
+        }).filter(Boolean);
+
+        if (updates.length > 0) {
+            const { error: updateError } = await supabase
+                .from('stocks')
+                .upsert(updates as any, { onConflict: 'code' });
+
+            if (updateError) {
+                console.error('[stockActions] Update Error:', updateError);
+                return { success: false, updatedCount: 0, pricesFound, message: 'DB更新失敗' };
+            }
+
+            console.log(`[stockActions] Successfully updated ${updates.length} stocks`);
+            return { success: true, updatedCount: updates.length, pricesFound, message: `Updated ${updates.length} stocks` };
+        }
+
+        return { success: true, updatedCount: 0, pricesFound, message: '有効な価格が見つかりませんでした' };
+
+    } catch (e: any) {
+        console.error('[stockActions] updateMasterStockPrices critical error:', e);
+        return { success: false, updatedCount: 0, pricesFound: 0, message: e.message || 'Unknown Error' };
     }
 }
