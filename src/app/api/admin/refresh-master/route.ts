@@ -3,6 +3,7 @@ import { fetchMasterData } from '@/lib/googleSheets';
 import { createServiceRoleClient } from '@/utils/supabase/service-role';
 
 export const dynamic = 'force-dynamic';
+export const runtime = 'edge';
 
 export async function GET(request: NextRequest) {
     try {

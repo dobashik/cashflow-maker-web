@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { updateMasterStockPrices } from '@/app/actions/stockActions';
 
 export const dynamic = 'force-dynamic'; // Ensure not cached
+export const runtime = 'edge';
 
 export async function GET(request: NextRequest) {
     // 1. Authorization Check
