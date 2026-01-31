@@ -14,9 +14,20 @@ jobs:
       - name: Call API (Full Update)
         run: |
           echo "Starting Full Update..."
-          curl -v -X GET \
+          response=$(curl -s -w "\n%{http_code}" -X GET \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
-            "${{ secrets.NEXT_PUBLIC_BASE_URL }}/api/cron/update-prices?mode=full"
+            "${{ secrets.NEXT_PUBLIC_BASE_URL }}/api/cron/update-prices?mode=full")
+          
+          http_code=$(echo "$response" | tail -n1)
+          body=$(echo "$response" | sed '$d')
+          
+          echo "HTTP Status: $http_code"
+          echo "Response Body: $body"
+          
+          if [ "$http_code" -ne 200 ]; then
+            echo "Error: API call failed with status $http_code"
+            exit 1
+          fi
 
       - name: Wait 60 seconds
         run: sleep 60
@@ -24,6 +35,17 @@ jobs:
       - name: Call API (Retry Update)
         run: |
           echo "Starting Retry Update..."
-          curl -v -X GET \
+          response=$(curl -s -w "\n%{http_code}" -X GET \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
-            "${{ secrets.NEXT_PUBLIC_BASE_URL }}/api/cron/update-prices?mode=retry"
+            "${{ secrets.NEXT_PUBLIC_BASE_URL }}/api/cron/update-prices?mode=retry")
+          
+          http_code=$(echo "$response" | tail -n1)
+          body=$(echo "$response" | sed '$d')
+          
+          echo "HTTP Status: $http_code"
+          echo "Response Body: $body"
+          
+          if [ "$http_code" -ne 200 ]; then
+            echo "Error: API call failed with status $http_code"
+            exit 1
+          fi
