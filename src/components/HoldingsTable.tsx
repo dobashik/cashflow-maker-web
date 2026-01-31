@@ -300,17 +300,13 @@ export function HoldingsTable({ isSampleMode = false, onDataUpdate }: { isSample
 
         setIsUpdating(true);
         try {
-            // Step 1: セクター情報を更新
-            const sectorResult = await updateAllSectorData(user.id);
-            console.log('[HoldingsTable] Sector update:', sectorResult.message);
-
-            // Step 2: 最新株価を取得・更新
+            // Step 1: 最新株価を取得・更新 (セクター更新は行わない)
             const priceResult = await updateAllStockPrices(user.id);
             console.log('[HoldingsTable] Price update:', priceResult.message);
 
             // Refresh UI
             await fetchHoldings();
-            alert(`${sectorResult.message}\n${priceResult.message}`);
+            alert(`${priceResult.message}`);
         } catch (error) {
             console.error('[HoldingsTable] Update error:', error);
             alert('更新中にエラーが発生しました');

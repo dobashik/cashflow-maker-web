@@ -128,15 +128,15 @@ export async function updateAllSectorData(userId: string): Promise<{ success: bo
     try {
         const supabase = await createClient();
 
-        // Step 1: holdings テーブルから sector が未設定の銘柄コードを取得
-        const { data: holdings, error: fetchError } = await supabase
-            .from('holdings')
-            .select('id, code, sector')
-            .eq('user_id', userId)
+        // Step 1: stocks テーブルから sector が未設定の銘柄コードを取得
+        // holdingsではなくstocksを正とする
+        const { data: stocks, error: fetchError } = await supabase
+            .from('stocks')
+            .select('code, sector')
             .or('sector.is.null,sector.eq.,sector.eq.その他');
 
         if (fetchError) {
-            console.error('[stockActions] Failed to fetch holdings:', fetchError);
+            console.error('[stockActions] Failed to fetch stocks:', fetchError);
             return {
                 success: false,
                 updatedCount: 0,
@@ -144,7 +144,7 @@ export async function updateAllSectorData(userId: string): Promise<{ success: bo
             };
         }
 
-        if (!holdings || holdings.length === 0) {
+        if (!stocks || stocks.length === 0) {
             return {
                 success: true,
                 updatedCount: 0,
@@ -152,8 +152,8 @@ export async function updateAllSectorData(userId: string): Promise<{ success: bo
             };
         }
 
-        // 重複排除した銘柄コードリスト（String().trim() で正規化）
-        const uniqueCodes = [...new Set(holdings.map(h => String(h.code).trim()))];
+        // 重複排除した銘柄コードリスト
+        const uniqueCodes = [...new Set(stocks.map(h => String(h.code).trim()))];
 
         // Step 2: マスタデータからセクター情報を取得
         const sectorData = await enrichHoldingsWithSectorData(uniqueCodes);
@@ -747,7 +747,8 @@ export async function updateMasterStockPrices(mode: 'full' | 'retry' = 'full'): 
         const supabase = createServiceRoleClient(); // Admin権限で操作
 
         // 1. 対象銘柄の抽出
-        let query = supabase.from('stocks').select('code, updated_at');
+        // フォールバック判定のために price も取得する
+        let query = supabase.from('stocks').select('code, updated_at, price');
 
         if (mode === 'retry') {
             // 現在時刻より25分以上前のレコードを「更新失敗」または「未更新」とみなす
@@ -779,6 +780,9 @@ export async function updateMasterStockPrices(mode: 'full' | 'retry' = 'full'): 
         // Upsert用のデータ作成
         const updates = codes.map(code => {
             const newPrice = priceMap[code];
+            const currentStock = stocks.find(s => s.code === code);
+
+            // Case A: 新しい価格が有効なら更新
             if (newPrice !== undefined && newPrice > 0) {
                 return {
                     code: code,
@@ -786,6 +790,19 @@ export async function updateMasterStockPrices(mode: 'full' | 'retry' = 'full'): 
                     updated_at: new Date().toISOString(),
                 };
             }
+
+            // Case B: 取得失敗時、DBに「1時間以内の有効なデータ」があれば更新をスキップ（古い値を維持）
+            if (currentStock && currentStock.price > 0 && currentStock.updated_at) {
+                const lastUpdate = new Date(currentStock.updated_at).getTime();
+                const oneHourAgo = Date.now() - (60 * 60 * 1000);
+
+                if (lastUpdate > oneHourAgo) {
+                    console.log(`[stockActions] Skip update for ${code}: Fetch failed but DB has fresh data (within 1h).`);
+                    return null;
+                }
+            }
+
+            // Case C: 取得失敗 かつ DBも古い/無効 -> スキップ（次回リトライ対象になる可能性あり）
             return null;
         }).filter(Boolean);
 
