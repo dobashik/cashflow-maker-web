@@ -24,7 +24,7 @@ import {
 import { createClient } from '@/utils/supabase/server';
 import { createServiceRoleClient } from '@/utils/supabase/service-role';
 
-export const runtime = 'edge';
+
 
 /**
  * シート2を使用して最新の株価を取得
