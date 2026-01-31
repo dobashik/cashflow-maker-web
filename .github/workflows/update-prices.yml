@@ -2,28 +2,28 @@ name: Update Stock Prices
 
 on:
   schedule:
-    # 毎時0分と30分に Full Update
-    - cron: '0,30 * * * *'
-    # 毎時1分と31分に Retry Update (取りこぼし救済)
-    - cron: '1,31 * * * *'
+    # テスト用: 5分おきに実行
+    - cron: '*/5 * * * *'
   workflow_dispatch:
 
 jobs:
   update-prices:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
-      - name: Determine Mode
-        id: mode
+      - name: Call API (Full Update)
         run: |
-          MINUTE=$(date +%-M)
-          if [ "$MINUTE" = "1" ] || [ "$MINUTE" = "31" ]; then
-            echo "mode=retry" >> $GITHUB_OUTPUT
-          else
-            echo "mode=full" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Call API
-        run: |
-          curl -X GET \
+          echo "Starting Full Update..."
+          curl -v -X GET \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
-            "${{ secrets.PRODUCTION_URL }}/api/cron/update-prices?mode=${{ steps.mode.outputs.mode }}"
+            "${{ secrets.NEXT_PUBLIC_BASE_URL }}/api/cron/update-prices?mode=full"
+
+      - name: Wait 60 seconds
+        run: sleep 60
+
+      - name: Call API (Retry Update)
+        run: |
+          echo "Starting Retry Update..."
+          curl -v -X GET \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            "${{ secrets.NEXT_PUBLIC_BASE_URL }}/api/cron/update-prices?mode=retry"

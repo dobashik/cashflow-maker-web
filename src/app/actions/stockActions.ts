@@ -17,6 +17,7 @@ import {
     fetchPricesViaSheet2,
     cleanPriceString,
     fetchMasterData,
+    lookupMasterDataBatch,
     PriceMap,
     MasterDataMap
 } from '@/lib/googleSheets';
@@ -397,26 +398,58 @@ export async function saveHoldingsToSupabase(
         const uniqueCodes = [...new Set(combinedItems.map(item => String(item.code).trim()))];
 
         if (uniqueCodes.length > 0) {
-            // 既存のStocksを確認（または onConflict ignore で一括挿入）
-            // "price" と "sector" は初期値 null でも良いが、もしCSVに情報があれば使ってもよい。
-            // しかしCSVにはセクターや現在値が含まれていない場合も多い（保有CSVなど）。
-            // ここではシンプルに「存在しなければ作成」を行う。
-
-            const stocksToUpsert = uniqueCodes.map(code => ({
-                code: code,
-                // price, sector は既存があれば維持したいので、onConflict で update しない、
-                // あるいは update しても updated_at だけ変えるなど。
-                // ここでは「無視」が一番安全だが、Supabaseの upsert(ignoreDuplicates: true) を使う。
-            }));
-
-            const { error: stocksError } = await supabase
+            // Step A: 既にDBに存在する銘柄を確認（負荷軽減＆既存セクター保護のため）
+            const { data: existingStocks, error: checkError } = await supabase
                 .from('stocks')
-                .upsert(stocksToUpsert, { onConflict: 'code', ignoreDuplicates: true });
+                .select('code')
+                .in('code', uniqueCodes);
 
-            if (stocksError) {
-                console.error("Stocks Master Insert Error:", stocksError);
-                // マスタ登録に失敗しても、一旦Holdingsへの保存は試みるか、エラーにするか。
-                // FK制約がある場合失敗するので、ここはエラーログを出して続行（FKエラーになればキャッチされる）
+            if (checkError) {
+                console.error("Stocks Check Error:", checkError);
+                // エラー時は安全のため処理続行（マスタ更新スキップ）または停止。
+                // ここではログを出して、マスタ更新はスキップする（Holdings保存は継続）
+            } else {
+                const existingCodeSet = new Set(existingStocks?.map(s => s.code) || []);
+
+                // Step B: DBに存在しない「完全新規銘柄」のみを抽出
+                const newCodes = uniqueCodes.filter(c => !existingCodeSet.has(c));
+
+                if (newCodes.length > 0) {
+                    console.log(`[stockActions] Found ${newCodes.length} NEW stocks. Fetching master data...`);
+
+                    // Step C: 新規銘柄のみマスタデータを取得（CSVパース）
+                    // 既存銘柄のセクター情報は上書きしない
+                    const masterDataMap = await lookupMasterDataBatch(newCodes);
+
+                    const stocksToInsert = newCodes.map(code => {
+                        const master = masterDataMap[code];
+                        return {
+                            code: code,
+                            name: master?.name || null, // 名前もマスタから補完
+                            sector: master?.sector || null, // セクターもマスタから補完
+                            // priceはここではないのでnull/0（別途cron等で更新）
+                            updated_at: new Date().toISOString()
+                        };
+                    });
+
+                    // Step D: 新規登録
+                    const { error: insertError } = await supabase
+                        .from('stocks')
+                        .insert(stocksToInsert); // 既にフィルタリング済みなので insert でOKだが、念のため
+
+                    if (insertError) {
+                        // 並列リクエスト等で競合した場合の保険として upsert ignore を使う手もあるが、
+                        // 今回は「上書きしない」が要件なので insert or ignore が望ましい。
+                        // Supabase (Postgres) で insert ... on conflict do nothing は upsert + ignoreDuplicates: true
+                        console.error("New Stocks Insert Error (Trying upsert ignore):", insertError);
+
+                        await supabase
+                            .from('stocks')
+                            .upsert(stocksToInsert, { onConflict: 'code', ignoreDuplicates: true });
+                    } else {
+                        console.log(`[stockActions] Registered ${stocksToInsert.length} new stocks with sector info.`);
+                    }
+                }
             }
         }
 

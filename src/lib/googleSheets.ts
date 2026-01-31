@@ -131,13 +131,20 @@ export async function fetchMasterData(): Promise<MasterDataMap> {
             const line = lines[i];
             if (!line.trim()) continue;
 
-            const columns = line.split(',');
-            const rawCode = String(columns[1] || '');
-            const code = rawCode.split('.')[0].trim();
+            // Robust CSV split: Split by comma ONLY if an even number of quotes follow.
+            // This handles "Company, Inc." correctly and preserves empty fields.
+            const columns = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(col => {
+                return col.replace(/^"|"$/g, '').trim();
+            });
+
+            // Index 1: Code, Index 2: Name, Index 7: Sector17
+            const rawCode = columns[1] || '';
+            const code = rawCode.split('.')[0]; // Handle cases like '1301.0'
+
             if (!code) continue;
 
-            const name = String(columns[2] || '').trim();
-            const sector = String(columns[7] || '').trim();
+            const name = columns[2] || '';
+            const sector = columns[7] || '';
 
             masterData[code] = {
                 name: name,
