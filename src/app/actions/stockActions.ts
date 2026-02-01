@@ -23,7 +23,6 @@ import {
 } from '@/lib/googleSheets';
 import { createClient } from '@/utils/supabase/server';
 import { createServiceRoleClient } from '@/utils/supabase/service-role';
-import { randomUUID } from 'crypto';
 
 
 
@@ -463,7 +462,7 @@ export async function saveHoldingsToSupabase(
 
         // 3. DB用データ作成
         const dbRows = aggregatedItems.map(item => ({
-            id: item.id || randomUUID(), // IDがあれば設定（更新用）、なければ新規生成（Insert用）
+            id: item.id || generateUUID(), // IDがあれば設定（更新用）、なければ新規生成（Insert用）
             user_id: user.id,
             code: item.code,
             name: item.name,
@@ -829,4 +828,19 @@ export async function updateMasterStockPrices(mode: 'full' | 'retry' = 'full'): 
         console.error('[stockActions] updateMasterStockPrices critical error:', e);
         return { success: false, updatedCount: 0, pricesFound: 0, message: e.message || 'Unknown Error' };
     }
+}
+
+/**
+ * Helper to generate UUID safely in both Node.js and Edge Runtimes
+ */
+function generateUUID() {
+    // Edge Runtime / Modern Browsers / Node 19+
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+        return crypto.randomUUID();
+    }
+    // Fallback for environments where crypto.randomUUID is not available
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+        var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+        return v.toString(16);
+    });
 }
