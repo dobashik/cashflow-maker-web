@@ -664,7 +664,7 @@ export async function updateSpecificStockPrices(userId: string, targetCodes: str
         // RLS回避のためAdminクライアントを使用
         const { data: existingStocks, error: checkError } = await adminSupabase
             .from('stocks')
-            .select('code')
+            .select('code, price') // 価格もチェック対象にする
             .in('code', requestedCodes);
 
         if (checkError) {
@@ -682,29 +682,34 @@ export async function updateSpecificStockPrices(userId: string, targetCodes: str
             };
         }
 
-        const existingCodeSet = new Set(existingStocks?.map(s => s.code) || []);
+        // Step 2: 「取得対象」の銘柄を特定
+        // 対象: DBに存在しない OR 存在するが価格がNull/0円
+        const validExistingCodes = new Set(
+            existingStocks
+                ?.filter(s => s.price !== null && s.price > 0)
+                .map(s => s.code) || []
+        );
 
-        // Step 2: 完全に新規の銘柄だけを特定
-        const newCodes = requestedCodes.filter(c => !existingCodeSet.has(c));
-        console.log(`[stockActions] Found ${newCodes.length} NEW stocks to fetch (Skipped ${existingCodeSet.size} existing)`);
+        const targetFetchCodes = requestedCodes.filter(c => !validExistingCodes.has(c));
+        console.log(`[stockActions] Fetch Target: ${targetFetchCodes.length} codes (Skipped ${validExistingCodes.size} valid existing)`);
 
-        if (newCodes.length === 0) {
+        if (targetFetchCodes.length === 0) {
             return {
                 success: true,
                 updatedCount: 0,
-                pricesFound: existingCodeSet.size, // 既存データがあるので「見つかった」とみなすこともできるが、更新数は0
-                message: '全ての銘柄データは取得済みです（外部アクセスなし）',
+                pricesFound: validExistingCodes.size,
+                message: '全ての銘柄は最新価格（または有効な価格）を保持しています',
             };
         }
 
-        // Step 3: 新規銘柄のみシート2経由で株価を取得
-        const priceMap = await fetchPricesViaSheet2(newCodes);
+        // Step 3: 対象銘柄のみシート2経由で株価を取得
+        const priceMap = await fetchPricesViaSheet2(targetFetchCodes);
         const pricesFound = Object.values(priceMap).filter(p => p > 0).length;
 
-        // Step 4: Stocksテーブルに新規保存
+        // Step 4: Stocksテーブルに新規保存（Upsert）
         let updatedCount = 0;
 
-        const updates = newCodes.map(code => {
+        const updates = targetFetchCodes.map(code => {
             const newPrice = priceMap[code];
             if (newPrice !== undefined && newPrice > 0) {
                 return {
@@ -732,8 +737,8 @@ export async function updateSpecificStockPrices(userId: string, targetCodes: str
         return {
             success: true,
             updatedCount,
-            pricesFound: pricesFound + existingCodeSet.size, // 新規取得分 + 既存分
-            message: `${updatedCount}件の新規銘柄データを取得しました`,
+            pricesFound: pricesFound + validExistingCodes.size, // 新規取得分 + 既存有効分
+            message: `${updatedCount}件の価格データを更新しました`,
         };
 
     } catch (error) {
