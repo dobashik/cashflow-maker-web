@@ -55,7 +55,7 @@ export async function GET(request: NextRequest) {
             const data = masterData[code];
             return {
                 code: code,
-                name: data.name,
+                // name: data.name, // Stocksテーブルにname列がないため除外
                 sector: data.sector,
                 updated_at: new Date().toISOString()
             };
