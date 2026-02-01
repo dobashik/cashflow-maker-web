@@ -368,6 +368,7 @@ export async function saveHoldingsToSupabase(
             if (existingRows && existingRows.length > 0) {
                 // DBデータをHolding型に変換
                 const existingHoldings: Holding[] = existingRows.map(row => ({
+                    id: row.id,
                     code: row.code,
                     name: row.name,
                     quantity: row.quantity,
@@ -461,6 +462,7 @@ export async function saveHoldingsToSupabase(
 
         // 3. DB用データ作成
         const dbRows = aggregatedItems.map(item => ({
+            id: item.id, // IDがあれば設定（更新用）、なければundefined（新規Insert用）
             user_id: user.id,
             code: item.code,
             name: item.name,
@@ -493,11 +495,11 @@ export async function saveHoldingsToSupabase(
         }
 
         // Case B: Save (Upsert)
-        // conflict target: user_id, code, source
-        // マージ済みのデータを保存する
+        // conflict target: removed to use Primary Key (id) for updates
+        // IDがある行はUpdate、ない行はInsertになる
         const { error: upsertError } = await supabase
             .from('holdings')
-            .upsert(dbRows, { onConflict: 'user_id, code, source' });
+            .upsert(dbRows);
 
         if (upsertError) {
             console.error("Upsert Error:", upsertError);

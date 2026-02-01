@@ -8,6 +8,7 @@ export type ExpenseBlock = {
 export type AccountType = string;
 
 export type Holding = {
+    id?: string;
     code: string;
     name: string;
     quantity: number;
