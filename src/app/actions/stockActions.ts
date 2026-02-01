@@ -443,15 +443,20 @@ export async function saveHoldingsToSupabase(
                         .insert(stocksToInsert); // 既にフィルタリング済みなので insert でOKだが、念のため
 
                     if (insertError) {
-                        // 並列リクエスト等で競合した場合の保険として upsert ignore を使う手もあるが、
-                        // 今回は「上書きしない」が要件なので insert or ignore が望ましい。
-                        // Supabase (Postgres) で insert ... on conflict do nothing は upsert + ignoreDuplicates: true
                         console.error("New Stocks Insert Error (Trying upsert ignore):", insertError);
 
-                        // Adminクライアント使用
-                        await adminSupabase
+                        // Recovery: Upsert with ignoreDuplicates
+                        const { error: recoveryError } = await adminSupabase
                             .from('stocks')
                             .upsert(stocksToInsert, { onConflict: 'code', ignoreDuplicates: true });
+
+                        if (recoveryError) {
+                            console.error("Recovery Stocks Upsert Error:", recoveryError);
+                            return {
+                                success: false,
+                                message: `マスタデータの登録に失敗しました: ${recoveryError.message || JSON.stringify(recoveryError)}`
+                            };
+                        }
                     } else {
                         console.log(`[stockActions] Registered ${stocksToInsert.length} new stocks with sector info.`);
                     }
