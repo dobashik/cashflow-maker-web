@@ -23,6 +23,7 @@ import {
 } from '@/lib/googleSheets';
 import { createClient } from '@/utils/supabase/server';
 import { createServiceRoleClient } from '@/utils/supabase/service-role';
+import { randomUUID } from 'crypto';
 
 
 
@@ -462,7 +463,7 @@ export async function saveHoldingsToSupabase(
 
         // 3. DB用データ作成
         const dbRows = aggregatedItems.map(item => ({
-            id: item.id, // IDがあれば設定（更新用）、なければundefined（新規Insert用）
+            id: item.id || randomUUID(), // IDがあれば設定（更新用）、なければ新規生成（Insert用）
             user_id: user.id,
             code: item.code,
             name: item.name,
