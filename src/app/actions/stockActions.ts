@@ -402,7 +402,9 @@ export async function saveHoldingsToSupabase(
 
         if (uniqueCodes.length > 0) {
             // Step A: 既にDBに存在する銘柄を確認（負荷軽減＆既存セクター保護のため）
-            const { data: existingStocks, error: checkError } = await supabase
+            // RLS回避のためAdminクライアントを使用
+            const adminSupabase = createServiceRoleClient();
+            const { data: existingStocks, error: checkError } = await adminSupabase
                 .from('stocks')
                 .select('code')
                 .in('code', uniqueCodes);
@@ -435,8 +437,8 @@ export async function saveHoldingsToSupabase(
                         };
                     });
 
-                    // Step D: 新規登録
-                    const { error: insertError } = await supabase
+                    // Step D: 新規登録（Adminクライアント使用）
+                    const { error: insertError } = await adminSupabase
                         .from('stocks')
                         .insert(stocksToInsert); // 既にフィルタリング済みなので insert でOKだが、念のため
 
@@ -446,7 +448,8 @@ export async function saveHoldingsToSupabase(
                         // Supabase (Postgres) で insert ... on conflict do nothing は upsert + ignoreDuplicates: true
                         console.error("New Stocks Insert Error (Trying upsert ignore):", insertError);
 
-                        await supabase
+                        // Adminクライアント使用
+                        await adminSupabase
                             .from('stocks')
                             .upsert(stocksToInsert, { onConflict: 'code', ignoreDuplicates: true });
                     } else {
@@ -636,6 +639,7 @@ export async function updateHoldingDividend(
 export async function updateSpecificStockPrices(userId: string, targetCodes: string[]): Promise<UpdateResult> {
     try {
         const supabase = await createClient();
+        const adminSupabase = createServiceRoleClient(); // Stocksテーブル操作用
 
         if (targetCodes.length === 0) {
             return {
@@ -652,7 +656,8 @@ export async function updateSpecificStockPrices(userId: string, targetCodes: str
 
         // Step 1: 既にstocksテーブルに存在する銘柄を確認
         // API負荷削減のため、既存銘柄は外部取得・更新を行わない
-        const { data: existingStocks, error: checkError } = await supabase
+        // RLS回避のためAdminクライアントを使用
+        const { data: existingStocks, error: checkError } = await adminSupabase
             .from('stocks')
             .select('code')
             .in('code', requestedCodes);
@@ -707,7 +712,8 @@ export async function updateSpecificStockPrices(userId: string, targetCodes: str
         }).filter(Boolean);
 
         if (updates.length > 0) {
-            const { error: updateError } = await supabase
+            // RLS回避のためAdminクライアントを使用
+            const { error: updateError } = await adminSupabase
                 .from('stocks')
                 .upsert(updates as any, { onConflict: 'code' });
 
