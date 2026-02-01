@@ -430,7 +430,7 @@ export async function saveHoldingsToSupabase(
                         const master = masterDataMap[code];
                         return {
                             code: code,
-                            name: master?.name || null, // 名前もマスタから補完
+                            // name: master?.name || null, // Stocksテーブルにname列がない可能性があるため除外
                             sector: master?.sector || null, // セクターもマスタから補完
                             // priceはここではないのでnull/0（別途cron等で更新）
                             updated_at: new Date().toISOString()
