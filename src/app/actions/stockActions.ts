@@ -503,7 +503,7 @@ export async function saveHoldingsToSupabase(
 
         if (upsertError) {
             console.error("Upsert Error:", upsertError);
-            return { success: false, message: "データの保存に失敗しました" };
+            return { success: false, message: `データの保存に失敗しました: ${upsertError.message || JSON.stringify(upsertError)}` };
         }
 
         return { success: true, message: "データを保存しました", userId: user.id };
