@@ -7,6 +7,8 @@ import { Castle, User as UserIcon, LogOut } from 'lucide-react';
 import { createClient } from '@/utils/supabase/client';
 import { type User } from '@supabase/supabase-js';
 import { AuthModal } from './AuthModal';
+import { SubscriptionBanner } from './SubscriptionBanner';
+import { UpgradeModal } from './UpgradeModal';
 import { Button } from './ui/Button'; // Keeping existing import if it was there, but using standard HTML button for custom styling if needed to match requested design.
 
 type HeaderProps = {
@@ -17,6 +19,7 @@ export function Header({ onRefreshAnimations }: HeaderProps) {
     const router = useRouter();
     const [isScrolled, setIsScrolled] = useState(false);
     const [isModalOpen, setIsModalOpen] = useState(false);
+    const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
     const [user, setUser] = useState<User | null>(null);
     const [isMenuOpen, setIsMenuOpen] = useState(false); // For mobile menu if needed, or dropdown for user
 
@@ -122,6 +125,9 @@ export function Header({ onRefreshAnimations }: HeaderProps) {
                     <div className="pl-4 border-l border-slate-200">
                         {user ? (
                             <div className="flex items-center gap-3">
+                                {/* サブスクリプションバナー（残り日数表示） */}
+                                <SubscriptionBanner onUpgradeClick={() => setIsUpgradeModalOpen(true)} />
+
                                 <div className="flex items-center gap-2 text-sm text-slate-600">
                                     <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold border border-indigo-200">
                                         {user.email?.charAt(0).toUpperCase()}
@@ -151,6 +157,7 @@ export function Header({ onRefreshAnimations }: HeaderProps) {
             </header>
 
             <AuthModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} />
+            <UpgradeModal isOpen={isUpgradeModalOpen} onClose={() => setIsUpgradeModalOpen(false)} />
         </>
     );
 }
