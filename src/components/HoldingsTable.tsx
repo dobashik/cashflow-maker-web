@@ -761,7 +761,7 @@ export function HoldingsTable({ isSampleMode = false, onDataUpdate }: { isSample
             }
 
             <p className="text-xs font-mono text-slate-400 uppercase tracking-wider flex-shrink-0">Holdings List</p>
-            <p className="text-xs text-slate-400 mb-4 mt-1 flex-shrink-0">※株価は20分以上遅延している場合があります。</p>
+            <p className="text-xs text-slate-400 mb-4 mt-1 flex-shrink-0">※サーバーの混雑状況により、株価情報は数時間程度遅延する場合があります。</p>
 
             <div className="overflow-auto border border-slate-100 rounded-xl flex-grow">
                 <table className="w-full min-w-[1200px] border-collapse bg-white">
