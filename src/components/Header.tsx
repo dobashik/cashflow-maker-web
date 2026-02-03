@@ -50,10 +50,19 @@ export function Header({ onRefreshAnimations }: HeaderProps) {
     }, []);
 
     const handleClick = (e: React.MouseEvent<HTMLAnchorElement>, id: string) => {
-        // Allow default anchor behavior (scrolling)
-        if (onRefreshAnimations) {
-            // Tiny delay to ensure scroll starts or just let it happen
-            onRefreshAnimations();
+        e.preventDefault();
+        const element = document.getElementById(id);
+        if (element) {
+            // まずスクロールを実行
+            element.scrollIntoView({ behavior: 'smooth' });
+
+            // スクロール完了後にアニメーションを再トリガー
+            // smooth scrollの完了を待つため、適度な遅延を設定
+            if (onRefreshAnimations) {
+                setTimeout(() => {
+                    onRefreshAnimations();
+                }, 300); // スクロール完了後にアニメーション開始
+            }
         }
     };
 

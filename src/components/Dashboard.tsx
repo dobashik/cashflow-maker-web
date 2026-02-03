@@ -43,10 +43,10 @@ export function DashboardContent({ animationKey = 0, isSampleMode = false }: { a
             <section id="sector-analysis" className="w-full scroll-mt-28">
                 <motion.div
                     key={`analysis-${animationKey}`}
-                    initial={{ opacity: 0, y: 20 }}
-                    whileInView={{ opacity: 1, y: 0 }}
-                    viewport={{ once: true }}
-                    transition={{ delay: 0.3 }}
+                    initial={{ opacity: 0 }}
+                    whileInView={{ opacity: 1 }}
+                    viewport={{ margin: "-50px" }}
+                    transition={{ duration: 0.5 }}
                 >
                     <PortfolioPie holdings={sharedHoldings} />
                 </motion.div>
@@ -57,8 +57,9 @@ export function DashboardContent({ animationKey = 0, isSampleMode = false }: { a
                 <motion.div
                     key={`calendar-${animationKey}`}
                     initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    transition={{ delay: 0.4 }}
+                    whileInView={{ opacity: 1 }}
+                    viewport={{ margin: "-50px" }}
+                    transition={{ duration: 0.5 }}
                 >
                     <DividendCalendar />
                 </motion.div>
