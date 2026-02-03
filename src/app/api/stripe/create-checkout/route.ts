@@ -1,26 +1,36 @@
 /**
- * Stripe Checkout Session 作成 API
+ * Stripe Checkout Session 作成 API (Edge Runtime対応)
  * 
- * 残りトライアル日数がある場合、Stripeのtrial_endとして引き継ぎ
+ * Stripe SDKを使わず、fetch APIで直接Stripe APIを呼び出す
  */
 
 import { NextResponse } from 'next/server';
-import Stripe from 'stripe';
 import { createClient } from '@/utils/supabase/server';
 
-// Edge Runtimeでは動作しないため、Node.jsランタイムを使用
-export const runtime = 'nodejs';
+export const runtime = 'edge';
 
-// Stripeクライアントを遅延初期化（ビルド時のエラーを回避）
-function getStripe() {
-    return new Stripe(process.env.STRIPE_SECRET_KEY!, {
-        apiVersion: '2026-01-28.clover'
+// Stripe APIを直接呼び出すヘルパー関数
+async function stripeRequest(endpoint: string, method: string, body?: object) {
+    const response = await fetch(`https://api.stripe.com/v1${endpoint}`, {
+        method,
+        headers: {
+            'Authorization': `Bearer ${process.env.STRIPE_SECRET_KEY}`,
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: body ? new URLSearchParams(body as Record<string, string>).toString() : undefined,
     });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+        throw new Error(data.error?.message || 'Stripe API error');
+    }
+
+    return data;
 }
 
 export async function POST(request: Request) {
     try {
-        const stripe = getStripe();
         const supabase = await createClient();
         const { data: { user } } = await supabase.auth.getUser();
 
@@ -58,11 +68,9 @@ export async function POST(request: Request) {
         let customerId = profile?.stripe_customer_id;
 
         if (!customerId) {
-            const customer = await stripe.customers.create({
-                email: user.email,
-                metadata: {
-                    supabase_user_id: user.id
-                }
+            const customer = await stripeRequest('/customers', 'POST', {
+                email: user.email || '',
+                'metadata[supabase_user_id]': user.id
             });
             customerId = customer.id;
 
@@ -90,31 +98,24 @@ export async function POST(request: Request) {
         const origin = request.headers.get('origin') || process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
 
         // Checkout Sessionを作成
-        const sessionParams: Stripe.Checkout.SessionCreateParams = {
+        const sessionParams: Record<string, string> = {
             customer: customerId,
             mode: 'subscription',
-            payment_method_types: ['card'],
-            line_items: [
-                {
-                    price: process.env.STRIPE_PRICE_ID!,
-                    quantity: 1
-                }
-            ],
+            'payment_method_types[0]': 'card',
+            'line_items[0][price]': process.env.STRIPE_PRICE_ID!,
+            'line_items[0][quantity]': '1',
             success_url: `${origin}/?subscription=success`,
             cancel_url: `${origin}/?subscription=canceled`,
-            metadata: {
-                supabase_user_id: user.id
-            },
-            subscription_data: {
-                metadata: {
-                    supabase_user_id: user.id
-                },
-                // 残りトライアル日数がある場合は引き継ぎ
-                ...(trialEnd && { trial_end: trialEnd })
-            }
+            'metadata[supabase_user_id]': user.id,
+            'subscription_data[metadata][supabase_user_id]': user.id,
         };
 
-        const session = await stripe.checkout.sessions.create(sessionParams);
+        // 残りトライアル日数がある場合は引き継ぎ
+        if (trialEnd) {
+            sessionParams['subscription_data[trial_end]'] = trialEnd.toString();
+        }
+
+        const session = await stripeRequest('/checkout/sessions', 'POST', sessionParams);
 
         return NextResponse.json({ url: session.url });
 
