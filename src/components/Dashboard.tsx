@@ -53,7 +53,7 @@ export function DashboardContent({ animationKey = 0, isSampleMode = false }: { a
             </section>
 
             {/* 4. 月別配当カレンダー (Dividend Calendar) */}
-            <section id="dividend-calendar" className="w-full scroll-mt-28">
+            <section id="dividend-calendar" className="w-full scroll-mt-32">
                 <motion.div
                     key={`calendar-${animationKey}`}
                     initial={{ opacity: 0 }}

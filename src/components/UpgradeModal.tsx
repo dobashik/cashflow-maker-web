@@ -26,9 +26,9 @@ interface UpgradeModalProps {
 
 const FEATURES = [
     { icon: TrendingUp, text: 'すべての保有株式データを管理' },
-    { icon: Zap, text: 'リアルタイム株価更新' },
+    { icon: Zap, text: '生活費カバー率表示' },
     { icon: Shield, text: 'セクター分析・配当カレンダー' },
-    { icon: Sparkles, text: '無制限のCSVインポート' },
+    { icon: Sparkles, text: '高配当株分析ツールCSVインポート' },
 ];
 
 export function UpgradeModal({ isOpen, onClose, trialDaysRemaining }: UpgradeModalProps) {
@@ -79,10 +79,10 @@ export function UpgradeModal({ isOpen, onClose, trialDaysRemaining }: UpgradeMod
                     <DialogHeader>
                         <DialogTitle className="text-2xl font-bold flex items-center gap-2 text-white">
                             <Sparkles className="w-6 h-6" />
-                            Cashflow Maker Pro
+                            Cashflow Maker
                         </DialogTitle>
-                        <DialogDescription className="text-indigo-100 mt-2">
-                            すべての機能を無制限に利用できます
+                        <DialogDescription className="text-white/90 mt-2 font-medium">
+                            無料期間終了後もすべての機能をご利用いただくためには
                         </DialogDescription>
                     </DialogHeader>
                 </div>
@@ -145,7 +145,7 @@ export function UpgradeModal({ isOpen, onClose, trialDaysRemaining }: UpgradeMod
                             ) : (
                                 <>
                                     <Sparkles className="w-5 h-5 mr-2" />
-                                    Pro版にアップグレード
+                                    このまま使い続ける
                                 </>
                             )}
                         </Button>

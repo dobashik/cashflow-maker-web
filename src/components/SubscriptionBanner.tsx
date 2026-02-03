@@ -48,10 +48,9 @@ export function SubscriptionBanner({ onUpgradeClick }: SubscriptionBannerProps) 
     // VIPユーザーの場合は特別なバッジを表示
     if (accessInfo.isVip) {
         return (
-            <div className="bg-gradient-to-r from-amber-500 to-yellow-400 text-white px-4 py-2 rounded-full flex items-center gap-2 shadow-lg">
-                <Crown className="w-4 h-4" />
-                <span className="text-sm font-bold">VIPメンバー</span>
-                <Sparkles className="w-4 h-4" />
+            <div className="bg-gradient-to-r from-amber-500 to-yellow-400 text-white px-3 py-1.5 rounded-full flex items-center gap-1.5 shadow-lg whitespace-nowrap">
+                <Crown className="w-3.5 h-3.5" />
+                <span className="text-xs font-bold">VIP</span>
             </div>
         );
     }
@@ -59,9 +58,9 @@ export function SubscriptionBanner({ onUpgradeClick }: SubscriptionBannerProps) 
     // 有料契約中の場合は何も表示しない（またはプロバッジ）
     if (accessInfo.reason === 'subscribed') {
         return (
-            <div className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-4 py-2 rounded-full flex items-center gap-2 shadow-lg">
-                <Sparkles className="w-4 h-4" />
-                <span className="text-sm font-bold">Pro</span>
+            <div className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-3 py-1.5 rounded-full flex items-center gap-1.5 shadow-lg whitespace-nowrap">
+                <Sparkles className="w-3.5 h-3.5" />
+                <span className="text-xs font-bold">Pro</span>
             </div>
         );
     }
@@ -85,14 +84,12 @@ export function SubscriptionBanner({ onUpgradeClick }: SubscriptionBannerProps) 
         return (
             <button
                 onClick={onUpgradeClick}
-                className={`bg-gradient-to-r ${bgColor} ${textColor} px-4 py-2 rounded-full flex items-center gap-2 shadow-lg hover:scale-105 transition-transform cursor-pointer group`}
+                className={`bg-gradient-to-r ${bgColor} ${textColor} px-3 py-1.5 rounded-full flex items-center gap-1.5 shadow-lg hover:scale-105 transition-transform cursor-pointer whitespace-nowrap`}
+                title="このまま使い続ける"
             >
-                <Clock className="w-4 h-4" />
-                <span className="text-sm font-bold">
+                <Clock className="w-3.5 h-3.5" />
+                <span className="text-xs font-bold">
                     残り{days}日無料
-                </span>
-                <span className="text-xs opacity-80 group-hover:opacity-100 transition-opacity">
-                    → Pro版へ
                 </span>
             </button>
         );
@@ -103,14 +100,12 @@ export function SubscriptionBanner({ onUpgradeClick }: SubscriptionBannerProps) 
         return (
             <button
                 onClick={onUpgradeClick}
-                className="bg-gradient-to-r from-rose-500 to-red-400 text-white px-4 py-2 rounded-full flex items-center gap-2 shadow-lg hover:scale-105 transition-transform cursor-pointer animate-pulse"
+                className="bg-gradient-to-r from-rose-500 to-red-400 text-white px-3 py-1.5 rounded-full flex items-center gap-1.5 shadow-lg hover:scale-105 transition-transform cursor-pointer animate-pulse whitespace-nowrap"
+                title="アップグレード"
             >
-                <Clock className="w-4 h-4" />
-                <span className="text-sm font-bold">
-                    無料期間終了
-                </span>
-                <span className="text-xs">
-                    → アップグレード
+                <Clock className="w-3.5 h-3.5" />
+                <span className="text-xs font-bold">
+                    無料終了
                 </span>
             </button>
         );

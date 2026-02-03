@@ -90,21 +90,21 @@ export function Header({ onRefreshAnimations }: HeaderProps) {
                     </div>
                 </Link>
 
-                <div className="flex items-center gap-6">
-                    <nav className="hidden md:flex gap-4">
+                <div className="flex items-center gap-4">
+                    <nav className="hidden lg:flex gap-3 whitespace-nowrap">
                         <a
                             href="#dividend-progress"
                             onClick={(e) => handleClick(e, 'dividend-progress')}
                             className="text-sm font-medium text-slate-500 hover:text-indigo-600 transition-colors"
                         >
-                            配当金カバー率
+                            生活費カバー率
                         </a>
                         <a
                             href="#holdings-list"
                             onClick={(e) => handleClick(e, 'holdings-list')}
                             className="text-sm font-medium text-slate-500 hover:text-indigo-600 transition-colors"
                         >
-                            保有株式リスト
+                            保有株式
                         </a>
                         <a
                             href="#sector-analysis"
@@ -118,7 +118,7 @@ export function Header({ onRefreshAnimations }: HeaderProps) {
                             onClick={(e) => handleClick(e, 'dividend-calendar')}
                             className="text-sm font-medium text-slate-500 hover:text-indigo-600 transition-colors"
                         >
-                            配当カレンダー
+                            カレンダー
                         </a>
                     </nav>
 
