@@ -132,6 +132,12 @@ export function UpgradeModal({ isOpen, onClose, trialDaysRemaining }: UpgradeMod
 
                     {/* アクションボタン */}
                     <div className="space-y-3 pt-2">
+                        {/* 無料期間中の安心メッセージ */}
+                        {trialDaysRemaining !== null && trialDaysRemaining !== undefined && trialDaysRemaining > 0 && (
+                            <p className="text-center text-sm text-slate-600 bg-slate-50 rounded-lg py-2 px-3">
+                                💳 カード登録しても<span className="font-bold text-indigo-600">無料期間中は課金されません</span>
+                            </p>
+                        )}
                         <Button
                             onClick={handleUpgrade}
                             disabled={isLoading}
