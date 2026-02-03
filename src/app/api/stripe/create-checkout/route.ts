@@ -121,8 +121,9 @@ export async function POST(request: Request) {
 
     } catch (error) {
         console.error('[create-checkout] Error:', error);
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
         return NextResponse.json(
-            { error: 'チェックアウトセッションの作成に失敗しました' },
+            { error: `チェックアウトセッションの作成に失敗しました: ${errorMessage}` },
             { status: 500 }
         );
     }
