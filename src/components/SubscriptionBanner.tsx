@@ -61,13 +61,32 @@ export function SubscriptionBanner({ onUpgradeClick, onAccessInfoChange }: Subsc
         );
     }
 
-    // 有料契約中の場合は何も表示しない（またはプロバッジ）
+    // 有料契約中の場合はProバッジ（クリックでポータルへ）
     if (accessInfo.reason === 'subscribed') {
+        const handleManageSubscription = async () => {
+            try {
+                const response = await fetch('/api/stripe/customer-portal', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                });
+                const data = await response.json();
+                if (data.url) {
+                    window.location.href = data.url;
+                }
+            } catch (error) {
+                console.error('[SubscriptionBanner] Portal error:', error);
+            }
+        };
+
         return (
-            <div className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-3 py-1.5 rounded-full flex items-center gap-1.5 shadow-lg whitespace-nowrap">
+            <button
+                onClick={handleManageSubscription}
+                className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-3 py-1.5 rounded-full flex items-center gap-1.5 shadow-lg whitespace-nowrap hover:scale-105 transition-transform cursor-pointer"
+                title="サブスクリプション管理"
+            >
                 <Sparkles className="w-3.5 h-3.5" />
                 <span className="text-xs font-bold">Pro</span>
-            </div>
+            </button>
         );
     }
 
