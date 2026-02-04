@@ -14,9 +14,10 @@ import { checkPremiumAccess, AccessCheckResult } from '@/app/actions/subscriptio
 
 interface SubscriptionBannerProps {
     onUpgradeClick?: () => void;
+    onAccessInfoChange?: (trialDaysRemaining: number | null) => void;
 }
 
-export function SubscriptionBanner({ onUpgradeClick }: SubscriptionBannerProps) {
+export function SubscriptionBanner({ onUpgradeClick, onAccessInfoChange }: SubscriptionBannerProps) {
     const [accessInfo, setAccessInfo] = useState<AccessCheckResult | null>(null);
     const [isLoading, setIsLoading] = useState(true);
 
@@ -25,6 +26,10 @@ export function SubscriptionBanner({ onUpgradeClick }: SubscriptionBannerProps) 
             try {
                 const result = await checkPremiumAccess();
                 setAccessInfo(result);
+                // 親コンポーネントに残り日数を通知
+                if (onAccessInfoChange) {
+                    onAccessInfoChange(result.trialDaysRemaining);
+                }
             } catch (error) {
                 console.error('[SubscriptionBanner] Error:', error);
             } finally {
@@ -33,6 +38,7 @@ export function SubscriptionBanner({ onUpgradeClick }: SubscriptionBannerProps) 
         };
 
         loadAccessInfo();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     // ローディング中は何も表示しない

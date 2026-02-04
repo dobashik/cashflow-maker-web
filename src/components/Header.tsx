@@ -20,6 +20,7 @@ export function Header({ onRefreshAnimations }: HeaderProps) {
     const [isScrolled, setIsScrolled] = useState(false);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
+    const [trialDaysRemaining, setTrialDaysRemaining] = useState<number | null>(null);
     const [user, setUser] = useState<User | null>(null);
     const [isMenuOpen, setIsMenuOpen] = useState(false); // For mobile menu if needed, or dropdown for user
 
@@ -135,7 +136,10 @@ export function Header({ onRefreshAnimations }: HeaderProps) {
                         {user ? (
                             <div className="flex items-center gap-3">
                                 {/* サブスクリプションバナー（残り日数表示） */}
-                                <SubscriptionBanner onUpgradeClick={() => setIsUpgradeModalOpen(true)} />
+                                <SubscriptionBanner
+                                    onUpgradeClick={() => setIsUpgradeModalOpen(true)}
+                                    onAccessInfoChange={setTrialDaysRemaining}
+                                />
 
                                 <div className="flex items-center gap-2 text-sm text-slate-600">
                                     <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold border border-indigo-200">
@@ -166,7 +170,11 @@ export function Header({ onRefreshAnimations }: HeaderProps) {
             </header>
 
             <AuthModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} />
-            <UpgradeModal isOpen={isUpgradeModalOpen} onClose={() => setIsUpgradeModalOpen(false)} />
+            <UpgradeModal
+                isOpen={isUpgradeModalOpen}
+                onClose={() => setIsUpgradeModalOpen(false)}
+                trialDaysRemaining={trialDaysRemaining}
+            />
         </>
     );
 }
