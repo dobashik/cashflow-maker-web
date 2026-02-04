@@ -803,6 +803,34 @@ export function HoldingsTable({ isSampleMode = false, onDataUpdate, onUpgradeCli
                             <th className="px-4 py-3 whitespace-nowrap text-center w-[60px]">編集</th>
                         </tr>
                     </thead>
+
+                    {/* 無料ユーザー向けのロックバナー（テーブル上部） */}
+                    {!hasAccess && holdings.length > FREE_TIER_LIMIT && (
+                        <tbody>
+                            <tr>
+                                <td colSpan={14} className="p-0">
+                                    <div className="bg-gradient-to-r from-indigo-50 via-purple-50 to-indigo-50 border-b border-indigo-100 px-4 py-3">
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-2 text-slate-600">
+                                                <Lock className="w-4 h-4 text-indigo-500" />
+                                                <span className="font-medium text-sm">
+                                                    {FREE_TIER_LIMIT}銘柄のみ表示中（他{holdings.length - FREE_TIER_LIMIT}銘柄はロック中）
+                                                </span>
+                                            </div>
+                                            <button
+                                                onClick={onUpgradeClick}
+                                                className="flex items-center gap-1.5 bg-gradient-to-r from-indigo-500 to-purple-500 text-white px-4 py-1.5 rounded-full text-sm font-bold shadow hover:scale-105 transition-transform"
+                                            >
+                                                <Sparkles className="w-4 h-4" />
+                                                Proに登録してすべて表示
+                                            </button>
+                                        </div>
+                                    </div>
+                                </td>
+                            </tr>
+                        </tbody>
+                    )}
+
                     <motion.tbody
                         className="divide-y divide-slate-100"
                         variants={container}
@@ -955,30 +983,6 @@ export function HoldingsTable({ isSampleMode = false, onDataUpdate, onUpgradeCli
                         </AnimatePresence>
                     </motion.tbody>
                 </table>
-
-                {/* 無料ユーザー向けのPro登録促進オーバーレイ */}
-                {!hasAccess && holdings.length > FREE_TIER_LIMIT && (
-                    <div className="relative -mt-20 pt-24 pb-6 bg-gradient-to-t from-white via-white/95 to-transparent">
-                        <div className="flex flex-col items-center justify-center gap-4">
-                            <div className="flex items-center gap-2 text-slate-600">
-                                <Lock className="w-5 h-5" />
-                                <span className="font-medium">
-                                    他{holdings.length - FREE_TIER_LIMIT}銘柄がロックされています
-                                </span>
-                            </div>
-                            <button
-                                onClick={onUpgradeClick}
-                                className="flex items-center gap-2 bg-gradient-to-r from-indigo-500 to-purple-500 text-white px-6 py-3 rounded-full font-bold shadow-lg hover:scale-105 transition-transform"
-                            >
-                                <Sparkles className="w-5 h-5" />
-                                Proに登録してすべて表示
-                            </button>
-                            <p className="text-xs text-slate-400">
-                                Proに登録すると、すべての銘柄の詳細情報にアクセスできます
-                            </p>
-                        </div>
-                    </div>
-                )}
             </div>
         </div >
     );
