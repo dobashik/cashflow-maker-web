@@ -7,11 +7,13 @@ import { DividendGame } from '@/components/DividendGame';
 import { PortfolioPie } from '@/components/PortfolioPie';
 import { HoldingsTable } from '@/components/HoldingsTable';
 import { DividendCalendar } from '@/components/DividendCalendar';
+import { UpgradeModal } from '@/components/UpgradeModal';
 
 import { Holding } from '@/lib/mockData';
 
 export function DashboardContent({ animationKey = 0, isSampleMode = false }: { animationKey?: number, isSampleMode?: boolean }) {
     const [sharedHoldings, setSharedHoldings] = useState<Holding[]>([]);
+    const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
 
     return (
         <div className="container mx-auto px-4 space-y-8">
@@ -35,7 +37,11 @@ export function DashboardContent({ animationKey = 0, isSampleMode = false }: { a
                     animate={{ opacity: 1 }}
                     transition={{ delay: 0.2 }}
                 >
-                    <HoldingsTable isSampleMode={isSampleMode} onDataUpdate={setSharedHoldings} />
+                    <HoldingsTable
+                        isSampleMode={isSampleMode}
+                        onDataUpdate={setSharedHoldings}
+                        onUpgradeClick={() => setIsUpgradeModalOpen(true)}
+                    />
                 </motion.div>
             </section>
 
@@ -64,6 +70,12 @@ export function DashboardContent({ animationKey = 0, isSampleMode = false }: { a
                     <DividendCalendar />
                 </motion.div>
             </section>
+
+            {/* アップグレードモーダル */}
+            <UpgradeModal
+                isOpen={isUpgradeModalOpen}
+                onClose={() => setIsUpgradeModalOpen(false)}
+            />
         </div>
     );
 }

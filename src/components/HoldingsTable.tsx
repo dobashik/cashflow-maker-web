@@ -1,10 +1,11 @@
-import { TrendingUp, MoreHorizontal, FileDown, RefreshCcw, AlertTriangle, UploadCloud, Trash2, Pencil, ExternalLink, Calendar, Banknote } from 'lucide-react';
+import { TrendingUp, MoreHorizontal, FileDown, RefreshCcw, AlertTriangle, UploadCloud, Trash2, Pencil, ExternalLink, Calendar, Banknote, Lock, Sparkles } from 'lucide-react';
 import { HOLDINGS, Holding } from '@/lib/mockData';
 import { motion, AnimatePresence, Variants } from 'framer-motion';
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { parseRakutenCSV, parseSBICSV, parseAnalysisCSV, loadCSV } from '@/utils/csvParser';
 import { createClient } from '@/utils/supabase/client';
 import { updateAllStockPrices, updateAllSectorData, updateHoldingAnalysisData, saveHoldingsToSupabase, deleteAllHoldings, updateSpecificStockPrices, deleteHoldingsBySource, updateHoldingDividend } from '@/app/actions/stockActions';
+import { checkPremiumAccess } from '@/app/actions/subscriptionActions';
 
 import {
     DropdownMenu,
@@ -37,11 +38,21 @@ const getRankColor = (rank: string) => {
     return 'bg-slate-50 text-slate-500';
 };
 
-export function HoldingsTable({ isSampleMode = false, onDataUpdate }: { isSampleMode?: boolean, onDataUpdate?: (data: Holding[]) => void }) {
+// 無料ユーザーが表示できる銘柄数
+const FREE_TIER_LIMIT = 5;
+
+interface HoldingsTableProps {
+    isSampleMode?: boolean;
+    onDataUpdate?: (data: Holding[]) => void;
+    onUpgradeClick?: () => void;
+}
+
+export function HoldingsTable({ isSampleMode = false, onDataUpdate, onUpgradeClick }: HoldingsTableProps) {
     const [holdings, setHoldings] = useState<Holding[]>(() => {
         if (isSampleMode) return HOLDINGS;
         return [];
     });
+    const [hasAccess, setHasAccess] = useState(true); // デフォルトはtrue（ローディング中に制限しない）
 
     // Share data with parent
     useEffect(() => {
@@ -49,6 +60,15 @@ export function HoldingsTable({ isSampleMode = false, onDataUpdate }: { isSample
             onDataUpdate(holdings);
         }
     }, [holdings, onDataUpdate]);
+
+    // アクセス権限チェック
+    useEffect(() => {
+        const checkAccess = async () => {
+            const result = await checkPremiumAccess();
+            setHasAccess(result.hasAccess);
+        };
+        checkAccess();
+    }, []);
 
     const supabase = createClient();
 
@@ -791,6 +811,9 @@ export function HoldingsTable({ isSampleMode = false, onDataUpdate }: { isSample
                     >
                         <AnimatePresence mode="popLayout">
                             {holdings.map((stock, i) => {
+                                // 無料ユーザーの場合、5銘柄目以降はロック
+                                const isLocked = !hasAccess && i >= FREE_TIER_LIMIT;
+
                                 const totalDividends = stock.quantity * stock.dividendPerShare;
                                 const totalAssets = stock.quantity * stock.price;
                                 const yieldPercent = stock.price > 0 ? (stock.dividendPerShare / stock.price) * 100 : 0;
@@ -824,7 +847,7 @@ export function HoldingsTable({ isSampleMode = false, onDataUpdate }: { isSample
                                         animate="show"
                                         exit="hidden"
                                         layout
-                                        className="group hover:bg-indigo-50/30 transition-colors duration-200"
+                                        className={`group hover:bg-indigo-50/30 transition-colors duration-200 ${isLocked ? 'blur-[6px] select-none pointer-events-none opacity-60' : ''}`}
                                     >
                                         <td className="px-4 py-3 whitespace-nowrap text-left">
                                             <div className="flex items-center gap-2">
@@ -932,6 +955,30 @@ export function HoldingsTable({ isSampleMode = false, onDataUpdate }: { isSample
                         </AnimatePresence>
                     </motion.tbody>
                 </table>
+
+                {/* 無料ユーザー向けのPro登録促進オーバーレイ */}
+                {!hasAccess && holdings.length > FREE_TIER_LIMIT && (
+                    <div className="relative -mt-20 pt-24 pb-6 bg-gradient-to-t from-white via-white/95 to-transparent">
+                        <div className="flex flex-col items-center justify-center gap-4">
+                            <div className="flex items-center gap-2 text-slate-600">
+                                <Lock className="w-5 h-5" />
+                                <span className="font-medium">
+                                    他{holdings.length - FREE_TIER_LIMIT}銘柄がロックされています
+                                </span>
+                            </div>
+                            <button
+                                onClick={onUpgradeClick}
+                                className="flex items-center gap-2 bg-gradient-to-r from-indigo-500 to-purple-500 text-white px-6 py-3 rounded-full font-bold shadow-lg hover:scale-105 transition-transform"
+                            >
+                                <Sparkles className="w-5 h-5" />
+                                Proに登録してすべて表示
+                            </button>
+                            <p className="text-xs text-slate-400">
+                                Proに登録すると、すべての銘柄の詳細情報にアクセスできます
+                            </p>
+                        </div>
+                    </div>
+                )}
             </div>
         </div >
     );
