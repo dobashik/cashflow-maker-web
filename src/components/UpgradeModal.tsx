@@ -79,7 +79,7 @@ export function UpgradeModal({ isOpen, onClose, trialDaysRemaining }: UpgradeMod
                     <DialogHeader>
                         <DialogTitle className="text-2xl font-bold flex items-center gap-2 text-white">
                             <Sparkles className="w-6 h-6" />
-                            Cashflow Maker
+                            Cashflow Maker Pro
                         </DialogTitle>
                         <DialogDescription className="text-white/90 mt-2 font-medium">
                             無料期間終了後もすべての機能をご利用いただくためには
