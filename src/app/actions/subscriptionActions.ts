@@ -24,7 +24,7 @@ export interface UserProfile {
 
 export interface AccessCheckResult {
     hasAccess: boolean;
-    reason: 'vip' | 'trial' | 'subscribed' | 'no_access';
+    reason: 'vip' | 'trial' | 'subscribed' | 'canceled' | 'no_access';
     trialDaysRemaining: number | null;
     isVip: boolean;
     subscriptionStatus: SubscriptionStatus;
@@ -102,8 +102,9 @@ export async function checkPremiumAccess(): Promise<AccessCheckResult> {
         };
     }
 
-    // 2. サブスクリプションがアクティブかチェック
-    if (profile.subscription_status === 'active' || profile.subscription_status === 'trialing') {
+    // 2. サブスクリプションがアクティブ（有料契約中）かチェック
+    // ※ trialingは無料トライアル期間中なので、ここではactiveのみ
+    if (profile.subscription_status === 'active') {
         return {
             hasAccess: true,
             reason: 'subscribed',
@@ -113,7 +114,7 @@ export async function checkPremiumAccess(): Promise<AccessCheckResult> {
         };
     }
 
-    // 3. トライアル期間チェック
+    // 3. トライアル期間チェック（subscription_status が trialing の場合も含む）
     const trialDaysRemaining = await calculateTrialDaysRemaining(profile.trial_ends_at);
     if (trialDaysRemaining !== null && trialDaysRemaining > 0) {
         return {
@@ -122,6 +123,17 @@ export async function checkPremiumAccess(): Promise<AccessCheckResult> {
             trialDaysRemaining,
             isVip: false,
             subscriptionStatus: profile.subscription_status as SubscriptionStatus
+        };
+    }
+
+    // 4. キャンセル済みの場合は再登録を促す
+    if (profile.subscription_status === 'canceled') {
+        return {
+            hasAccess: false,
+            reason: 'canceled',
+            trialDaysRemaining: 0,
+            isVip: false,
+            subscriptionStatus: 'canceled'
         };
     }
 

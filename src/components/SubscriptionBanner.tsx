@@ -120,7 +120,23 @@ export function SubscriptionBanner({ onUpgradeClick, onAccessInfoChange }: Subsc
         );
     }
 
-    // アクセス権がない場合
+    // キャンセル済みの場合は再登録を促す
+    if (accessInfo.reason === 'canceled') {
+        return (
+            <button
+                onClick={onUpgradeClick}
+                className="bg-gradient-to-r from-indigo-500 to-purple-500 text-white px-3 py-1.5 rounded-full flex items-center gap-1.5 shadow-lg hover:scale-105 transition-transform cursor-pointer whitespace-nowrap"
+                title="Proに登録"
+            >
+                <Sparkles className="w-3.5 h-3.5" />
+                <span className="text-xs font-bold">
+                    Proに登録
+                </span>
+            </button>
+        );
+    }
+
+    // アクセス権がない場合（無料期間終了）
     if (!accessInfo.hasAccess) {
         return (
             <button
