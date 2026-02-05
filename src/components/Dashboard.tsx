@@ -54,7 +54,10 @@ export function DashboardContent({ animationKey = 0, isSampleMode = false }: { a
                     viewport={{ margin: "-50px" }}
                     transition={{ duration: 0.5 }}
                 >
-                    <PortfolioPie holdings={sharedHoldings} />
+                    <PortfolioPie
+                        holdings={sharedHoldings}
+                        onUpgradeClick={() => setIsUpgradeModalOpen(true)}
+                    />
                 </motion.div>
             </section>
 
@@ -67,7 +70,9 @@ export function DashboardContent({ animationKey = 0, isSampleMode = false }: { a
                     viewport={{ margin: "-50px" }}
                     transition={{ duration: 0.5 }}
                 >
-                    <DividendCalendar />
+                    <DividendCalendar
+                        onUpgradeClick={() => setIsUpgradeModalOpen(true)}
+                    />
                 </motion.div>
             </section>
 

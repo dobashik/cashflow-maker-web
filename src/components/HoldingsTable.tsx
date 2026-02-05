@@ -810,19 +810,20 @@ export function HoldingsTable({ isSampleMode = false, onDataUpdate, onUpgradeCli
                             <tr>
                                 <td colSpan={14} className="p-0">
                                     <div className="bg-gradient-to-r from-indigo-50 via-purple-50 to-indigo-50 border-b border-indigo-100 px-4 py-3">
-                                        <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-6">
                                             <div className="flex items-center gap-2 text-slate-600">
                                                 <Lock className="w-4 h-4 text-indigo-500" />
-                                                <span className="font-medium text-sm">
+                                                <span className="font-medium text-sm whitespace-nowrap">
                                                     {FREE_TIER_LIMIT}銘柄のみ表示中（他{holdings.length - FREE_TIER_LIMIT}銘柄はロック中）
                                                 </span>
                                             </div>
                                             <button
                                                 onClick={onUpgradeClick}
-                                                className="flex items-center gap-1.5 bg-gradient-to-r from-indigo-500 to-purple-500 text-white px-4 py-1.5 rounded-full text-sm font-bold shadow hover:scale-105 transition-transform"
+                                                className="flex items-center gap-1.5 bg-gradient-to-r from-indigo-500 to-purple-500 text-white px-4 py-1.5 rounded-full text-sm font-bold shadow hover:scale-105 transition-transform whitespace-nowrap"
                                             >
                                                 <Sparkles className="w-4 h-4" />
-                                                Proに登録してすべて表示
+                                                <span className="hidden sm:inline">Proに登録してすべて表示</span>
+                                                <span className="sm:hidden">Proに登録</span>
                                             </button>
                                         </div>
                                     </div>

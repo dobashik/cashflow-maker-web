@@ -2,8 +2,10 @@
 
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Holding } from '@/lib/mockData';
+import { checkPremiumAccess } from '@/app/actions/subscriptionActions';
+import { Lock, Sparkles } from 'lucide-react';
 
 // 1. 17業種マスター定数の定義 (User Specified)
 const SECTOR_MASTER_LIST = [
@@ -15,8 +17,17 @@ const SECTOR_MASTER_LIST = [
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d', '#ffc658', '#8dd1e1'];
 
-export function PortfolioPie({ holdings = [] }: { holdings?: Holding[] }) {
+export function PortfolioPie({ holdings = [], onUpgradeClick }: { holdings?: Holding[], onUpgradeClick?: () => void }) {
     const [hoveredSector, setHoveredSector] = useState<string | null>(null);
+    const [hasAccess, setHasAccess] = useState(true);
+
+    useEffect(() => {
+        const check = async () => {
+            const result = await checkPremiumAccess();
+            setHasAccess(result.hasAccess);
+        };
+        check();
+    }, []);
 
     // 2. リアルタイム集計ロジック (Updated with Count)
     const data = useMemo(() => {
@@ -57,8 +68,28 @@ export function PortfolioPie({ holdings = [] }: { holdings?: Holding[] }) {
         }
 
         // Step 3: Sort by value descending
-        return result.sort((a, b) => b.value - a.value);
-    }, [holdings]);
+        let sorted = result.sort((a, b) => b.value - a.value);
+
+        // 無料ユーザー制限: 上位3セクターのみ表示、残りは「その他（ロック）」としてまとめる
+        if (!hasAccess && sorted.length > 3) {
+            const top3 = sorted.slice(0, 3);
+            const others = sorted.slice(3);
+
+            const lockedValue = others.reduce((sum, item) => sum + item.value, 0);
+            const lockedCount = others.reduce((sum, item) => sum + item.count, 0);
+
+            if (lockedValue > 0) {
+                top3.push({
+                    name: 'その他（ロック）',
+                    value: lockedValue,
+                    count: lockedCount
+                });
+            }
+            return top3;
+        }
+
+        return sorted;
+    }, [holdings, hasAccess]);
 
     const totalAssets = useMemo(() => data.reduce((sum, item) => sum + item.value, 0), [data]);
 
@@ -84,7 +115,9 @@ export function PortfolioPie({ holdings = [] }: { holdings?: Holding[] }) {
 
                             // Determine color based on pie data index for consistency
                             const colorIndex = pieData.findIndex(p => p.name === entry.name);
-                            const sectorColor = colorIndex >= 0 ? COLORS[colorIndex % COLORS.length] : undefined;
+                            // ロックされたセクターはグレー
+                            const isLocked = entry.name === 'その他（ロック）';
+                            const sectorColor = isLocked ? '#cbd5e1' : (colorIndex >= 0 ? COLORS[colorIndex % COLORS.length] : undefined);
 
                             return (
                                 <motion.div
@@ -110,19 +143,20 @@ export function PortfolioPie({ holdings = [] }: { holdings?: Holding[] }) {
                                                 className={`w-3 h-3 rounded-full flex-shrink-0 ${isZero ? 'bg-slate-200' : ''}`}
                                                 style={{ backgroundColor: isZero ? undefined : sectorColor }}
                                             />
-                                            <span className="text-sm font-medium text-slate-700 whitespace-normal">
+                                            <span className="text-sm font-medium text-slate-700 whitespace-normal flex items-center gap-1">
                                                 {entry.name}
+                                                {isLocked && <Lock className="w-3 h-3 text-slate-400" />}
                                             </span>
                                         </div>
                                         <div className="text-xs text-slate-400 pl-5">
-                                            {isZero ? '0銘柄' : `${entry.count}銘柄`}
+                                            {isLocked ? '詳細不可' : (isZero ? '0銘柄' : `${entry.count}銘柄`)}
                                         </div>
                                     </div>
 
                                     {/* Right Block */}
                                     <div className="flex items-center gap-4">
                                         <div className="text-sm font-bold text-slate-900">
-                                            {isZero ? '¥0' : `¥${entry.value.toLocaleString()}`}
+                                            {isLocked ? '???' : (isZero ? '¥0' : `¥${entry.value.toLocaleString()}`)}
                                         </div>
                                         <div className="text-xs font-medium bg-slate-100 text-slate-600 px-2 py-1 rounded-md min-w-[50px] text-center">
                                             {percentage}%
@@ -132,6 +166,18 @@ export function PortfolioPie({ holdings = [] }: { holdings?: Holding[] }) {
                             );
                         })}
                     </div>
+                    {/* Pro登録リンク */}
+                    {!hasAccess && (
+                        <div className="mt-4 pt-4 border-t border-slate-100 text-center">
+                            <button
+                                onClick={onUpgradeClick}
+                                className="text-xs font-bold text-indigo-600 hover:text-indigo-700 flex items-center justify-center gap-1 mx-auto transition-colors"
+                            >
+                                <Sparkles className="w-3 h-3" />
+                                すべてのセクターを表示
+                            </button>
+                        </div>
+                    )}
                 </div>
 
                 {/* Right: Pie Chart (Assets > 0 only) */}
