@@ -82,7 +82,10 @@ export function UpgradeModal({ isOpen, onClose, trialDaysRemaining }: UpgradeMod
                             Cashflow Maker Pro
                         </DialogTitle>
                         <DialogDescription className="text-white/90 mt-2 font-medium">
-                            無料期間終了後もすべての機能をご利用いただくためには
+                            {trialDaysRemaining && trialDaysRemaining > 0
+                                ? '無料期間終了後もすべての機能をご利用いただくためには'
+                                : 'すべての機能を利用するには'
+                            }
                         </DialogDescription>
                     </DialogHeader>
                 </div>
@@ -151,7 +154,10 @@ export function UpgradeModal({ isOpen, onClose, trialDaysRemaining }: UpgradeMod
                             ) : (
                                 <>
                                     <Sparkles className="w-5 h-5 mr-2" />
-                                    このまま使い続ける
+                                    {trialDaysRemaining && trialDaysRemaining > 0
+                                        ? 'このまま使い続ける'
+                                        : '全機能を利用する'
+                                    }
                                 </>
                             )}
                         </Button>

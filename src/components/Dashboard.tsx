@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from "framer-motion";
 import { Header } from '@/components/Header';
 import { DividendGame } from '@/components/DividendGame';
@@ -8,12 +8,23 @@ import { PortfolioPie } from '@/components/PortfolioPie';
 import { HoldingsTable } from '@/components/HoldingsTable';
 import { DividendCalendar } from '@/components/DividendCalendar';
 import { UpgradeModal } from '@/components/UpgradeModal';
+import { checkPremiumAccess } from '@/app/actions/subscriptionActions';
 
 import { Holding } from '@/lib/mockData';
 
 export function DashboardContent({ animationKey = 0, isSampleMode = false }: { animationKey?: number, isSampleMode?: boolean }) {
     const [sharedHoldings, setSharedHoldings] = useState<Holding[]>([]);
     const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
+    const [trialDaysRemaining, setTrialDaysRemaining] = useState<number | null>(null);
+
+    // トライアル日数取得
+    useEffect(() => {
+        const fetchTrialDays = async () => {
+            const result = await checkPremiumAccess();
+            setTrialDaysRemaining(result.trialDaysRemaining);
+        };
+        fetchTrialDays();
+    }, []);
 
     return (
         <div className="container mx-auto px-4 space-y-8">
@@ -80,6 +91,7 @@ export function DashboardContent({ animationKey = 0, isSampleMode = false }: { a
             <UpgradeModal
                 isOpen={isUpgradeModalOpen}
                 onClose={() => setIsUpgradeModalOpen(false)}
+                trialDaysRemaining={trialDaysRemaining}
             />
         </div>
     );
