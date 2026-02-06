@@ -8,6 +8,7 @@ import { PortfolioPie } from '@/components/PortfolioPie';
 import { HoldingsTable } from '@/components/HoldingsTable';
 import { DividendCalendar } from '@/components/DividendCalendar';
 import { UpgradeModal } from '@/components/UpgradeModal';
+import { Footer } from '@/components/Footer';
 import { checkPremiumAccess } from '@/app/actions/subscriptionActions';
 
 import { Holding } from '@/lib/mockData';
@@ -112,6 +113,8 @@ export function Dashboard() {
             <div className="h-24"></div>
 
             <DashboardContent animationKey={animationKey} isSampleMode={false} />
+
+            <Footer />
         </div>
     );
 }

@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Header } from "@/components/Header";
 import { HeroSection } from "@/components/HeroSection";
 import { DashboardContent } from "@/components/Dashboard";
+import { Footer } from "@/components/Footer";
 
 export function SampleDashboard() {
     const [animationKey, setAnimationKey] = useState(0);
@@ -46,6 +47,8 @@ export function SampleDashboard() {
                     <DashboardContent animationKey={animationKey} isSampleMode={true} />
                 </div>
             </div>
+
+            <Footer />
         </main>
     );
 }
