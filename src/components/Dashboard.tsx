@@ -69,6 +69,7 @@ export function DashboardContent({ animationKey = 0, isSampleMode = false }: { a
                     <PortfolioPie
                         holdings={sharedHoldings}
                         onUpgradeClick={() => setIsUpgradeModalOpen(true)}
+                        isSampleMode={isSampleMode}
                     />
                 </motion.div>
             </section>
@@ -84,6 +85,7 @@ export function DashboardContent({ animationKey = 0, isSampleMode = false }: { a
                 >
                     <DividendCalendar
                         onUpgradeClick={() => setIsUpgradeModalOpen(true)}
+                        isSampleMode={isSampleMode}
                     />
                 </motion.div>
             </section>

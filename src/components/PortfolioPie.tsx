@@ -17,17 +17,22 @@ const SECTOR_MASTER_LIST = [
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d', '#ffc658', '#8dd1e1'];
 
-export function PortfolioPie({ holdings = [], onUpgradeClick }: { holdings?: Holding[], onUpgradeClick?: () => void }) {
+export function PortfolioPie({ holdings = [], onUpgradeClick, isSampleMode = false }: { holdings?: Holding[], onUpgradeClick?: () => void, isSampleMode?: boolean }) {
     const [hoveredSector, setHoveredSector] = useState<string | null>(null);
     const [hasAccess, setHasAccess] = useState(true);
 
     useEffect(() => {
+        // サンプルモードの場合はチェックせず、アクセス許可
+        if (isSampleMode) {
+            setHasAccess(true);
+            return;
+        }
         const check = async () => {
             const result = await checkPremiumAccess();
             setHasAccess(result.hasAccess);
         };
         check();
-    }, []);
+    }, [isSampleMode]);
 
     // 2. リアルタイム集計ロジック (Updated with Count)
     const data = useMemo(() => {

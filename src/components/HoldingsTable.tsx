@@ -63,12 +63,17 @@ export function HoldingsTable({ isSampleMode = false, onDataUpdate, onUpgradeCli
 
     // アクセス権限チェック
     useEffect(() => {
+        // サンプルモードの場合はチェックせず、アクセス許可
+        if (isSampleMode) {
+            setHasAccess(true);
+            return;
+        }
         const checkAccess = async () => {
             const result = await checkPremiumAccess();
             setHasAccess(result.hasAccess);
         };
         checkAccess();
-    }, []);
+    }, [isSampleMode]);
 
     const supabase = createClient();
 

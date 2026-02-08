@@ -6,19 +6,24 @@ import { useState, useEffect } from 'react';
 import { checkPremiumAccess } from '@/app/actions/subscriptionActions';
 import { Lock, Sparkles } from 'lucide-react';
 
-export function DividendCalendar({ onUpgradeClick }: { onUpgradeClick?: () => void }) {
+export function DividendCalendar({ onUpgradeClick, isSampleMode = false }: { onUpgradeClick?: () => void, isSampleMode?: boolean }) {
     const maxAmount = Math.max(...MONTHLY_DIVIDENDS_DATA.map(d => d.amount)) * 1.1; // Add buffer
 
     const [hasAccess, setHasAccess] = useState(true);
     const currentMonth = new Date().getMonth() + 1; // 1-12
 
     useEffect(() => {
+        // サンプルモードの場合はチェックせず、アクセス許可
+        if (isSampleMode) {
+            setHasAccess(true);
+            return;
+        }
         const check = async () => {
             const result = await checkPremiumAccess();
             setHasAccess(result.hasAccess);
         };
         check();
-    }, []);
+    }, [isSampleMode]);
 
     const container = {
         hidden: { opacity: 0 },
