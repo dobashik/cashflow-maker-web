@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Header } from "@/components/Header";
 import { HeroSection } from "@/components/HeroSection";
 import { DashboardContent } from "@/components/Dashboard";
+import { BetaNoticeBanner } from "@/components/BetaNoticeBanner";
 import { Footer } from "@/components/Footer";
 
 export function SampleDashboard() {
@@ -17,6 +18,11 @@ export function SampleDashboard() {
         <main className="min-h-screen bg-slate-50 selection:bg-indigo-100 selection:text-indigo-900">
             {/* Interactive Header for Logged-out users */}
             <Header onRefreshAnimations={handleRefreshAnimations} />
+
+            {/* Spacer for fixed header */}
+            <div className="h-20"></div>
+
+            <BetaNoticeBanner />
 
             <HeroSection />
 

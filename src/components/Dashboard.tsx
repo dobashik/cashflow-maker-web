@@ -1,31 +1,19 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { motion } from "framer-motion";
 import { Header } from '@/components/Header';
 import { DividendGame } from '@/components/DividendGame';
 import { PortfolioPie } from '@/components/PortfolioPie';
 import { HoldingsTable } from '@/components/HoldingsTable';
 import { DividendCalendar } from '@/components/DividendCalendar';
-import { UpgradeModal } from '@/components/UpgradeModal';
+import { BetaNoticeBanner } from '@/components/BetaNoticeBanner';
 import { Footer } from '@/components/Footer';
-import { checkPremiumAccess } from '@/app/actions/subscriptionActions';
 
 import { Holding } from '@/lib/mockData';
 
 export function DashboardContent({ animationKey = 0, isSampleMode = false }: { animationKey?: number, isSampleMode?: boolean }) {
     const [sharedHoldings, setSharedHoldings] = useState<Holding[]>([]);
-    const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
-    const [trialDaysRemaining, setTrialDaysRemaining] = useState<number | null>(null);
-
-    // トライアル日数取得
-    useEffect(() => {
-        const fetchTrialDays = async () => {
-            const result = await checkPremiumAccess();
-            setTrialDaysRemaining(result.trialDaysRemaining);
-        };
-        fetchTrialDays();
-    }, []);
 
     return (
         <div className="container mx-auto px-4 space-y-8">
@@ -52,7 +40,6 @@ export function DashboardContent({ animationKey = 0, isSampleMode = false }: { a
                     <HoldingsTable
                         isSampleMode={isSampleMode}
                         onDataUpdate={setSharedHoldings}
-                        onUpgradeClick={() => setIsUpgradeModalOpen(true)}
                     />
                 </motion.div>
             </section>
@@ -68,7 +55,6 @@ export function DashboardContent({ animationKey = 0, isSampleMode = false }: { a
                 >
                     <PortfolioPie
                         holdings={sharedHoldings}
-                        onUpgradeClick={() => setIsUpgradeModalOpen(true)}
                         isSampleMode={isSampleMode}
                     />
                 </motion.div>
@@ -84,18 +70,10 @@ export function DashboardContent({ animationKey = 0, isSampleMode = false }: { a
                     transition={{ duration: 0.5 }}
                 >
                     <DividendCalendar
-                        onUpgradeClick={() => setIsUpgradeModalOpen(true)}
                         isSampleMode={isSampleMode}
                     />
                 </motion.div>
             </section>
-
-            {/* アップグレードモーダル */}
-            <UpgradeModal
-                isOpen={isUpgradeModalOpen}
-                onClose={() => setIsUpgradeModalOpen(false)}
-                trialDaysRemaining={trialDaysRemaining}
-            />
         </div>
     );
 }
@@ -113,6 +91,8 @@ export function Dashboard() {
 
             {/* Spacer for fixed header */}
             <div className="h-24"></div>
+
+            <BetaNoticeBanner />
 
             <DashboardContent animationKey={animationKey} isSampleMode={false} />
 

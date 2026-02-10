@@ -80,6 +80,29 @@ export async function calculateTrialDaysRemaining(trialEndsAt: string | null): P
 export async function checkPremiumAccess(): Promise<AccessCheckResult> {
     const profile = await getUserProfile();
 
+    // ===== ベータ期間中: 全ログインユーザーにアクセスを許可 =====
+    // 決済機能復旧時にこのブロックを削除し、下のコメントアウトを解除すれば元の判定ロジックに戻る
+    if (profile) {
+        return {
+            hasAccess: true,
+            reason: 'vip',
+            trialDaysRemaining: null,
+            isVip: false,
+            subscriptionStatus: profile.subscription_status as SubscriptionStatus
+        };
+    }
+    // 未ログインの場合
+    return {
+        hasAccess: false,
+        reason: 'no_access',
+        trialDaysRemaining: null,
+        isVip: false,
+        subscriptionStatus: 'inactive'
+    };
+    // ===== ベータ期間ここまで =====
+
+    /* === 決済機能復旧時に有効化する判定ロジック ===
+
     // プロフィールがない場合（未ログインまたはエラー）
     if (!profile) {
         return {
@@ -145,6 +168,8 @@ export async function checkPremiumAccess(): Promise<AccessCheckResult> {
         isVip: false,
         subscriptionStatus: profile.subscription_status as SubscriptionStatus
     };
+
+    === 決済機能復旧時に有効化する判定ロジック ここまで === */
 }
 
 /**

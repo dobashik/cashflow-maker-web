@@ -3,13 +3,10 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Castle, User as UserIcon, LogOut, Settings, ChevronDown } from 'lucide-react';
+import { Castle, User as UserIcon, LogOut, ChevronDown } from 'lucide-react';
 import { createClient } from '@/utils/supabase/client';
 import { type User } from '@supabase/supabase-js';
 import { AuthModal } from './AuthModal';
-import { SubscriptionBanner } from './SubscriptionBanner';
-import { UpgradeModal } from './UpgradeModal';
-import { Button } from './ui/Button'; // Keeping existing import if it was there, but using standard HTML button for custom styling if needed to match requested design.
 
 type HeaderProps = {
     onRefreshAnimations?: () => void;
@@ -19,8 +16,7 @@ export function Header({ onRefreshAnimations }: HeaderProps) {
     const router = useRouter();
     const [isScrolled, setIsScrolled] = useState(false);
     const [isModalOpen, setIsModalOpen] = useState(false);
-    const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
-    const [trialDaysRemaining, setTrialDaysRemaining] = useState<number | null>(null);
+
     const [user, setUser] = useState<User | null>(null);
     const [isMenuOpen, setIsMenuOpen] = useState(false); // For mobile menu if needed, or dropdown for user
     const [isUserMenuOpen, setIsUserMenuOpen] = useState(false); // ユーザードロップダウンメニュー
@@ -80,21 +76,7 @@ export function Header({ onRefreshAnimations }: HeaderProps) {
         }
     };
 
-    const handleManageSubscription = async () => {
-        setIsUserMenuOpen(false);
-        try {
-            const response = await fetch('/api/stripe/customer-portal', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-            });
-            const data = await response.json();
-            if (data.url) {
-                window.location.href = data.url;
-            }
-        } catch (error) {
-            console.error('[Header] Portal error:', error);
-        }
-    };
+
 
     // メニュー外クリックで閉じる
     useEffect(() => {
@@ -165,11 +147,6 @@ export function Header({ onRefreshAnimations }: HeaderProps) {
                     <div className="pl-4 border-l border-slate-200">
                         {user ? (
                             <div className="flex items-center gap-3">
-                                {/* サブスクリプションバナー（残り日数表示） */}
-                                <SubscriptionBanner
-                                    onUpgradeClick={() => setIsUpgradeModalOpen(true)}
-                                    onAccessInfoChange={setTrialDaysRemaining}
-                                />
 
                                 {/* ユーザードロップダウンメニュー */}
                                 <div className="relative user-menu-container">
@@ -198,13 +175,6 @@ export function Header({ onRefreshAnimations }: HeaderProps) {
                                             {/* メニュー項目 */}
                                             <div className="py-1">
                                                 <button
-                                                    onClick={handleManageSubscription}
-                                                    className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
-                                                >
-                                                    <Settings className="w-4 h-4 text-slate-400" />
-                                                    サブスク管理
-                                                </button>
-                                                <button
                                                     onClick={handleLogout}
                                                     className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors"
                                                 >
@@ -221,7 +191,7 @@ export function Header({ onRefreshAnimations }: HeaderProps) {
                                 onClick={() => setIsModalOpen(true)}
                                 className="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold py-2.5 px-5 rounded-full shadow-lg shadow-indigo-200 transition-all hover:scale-105 active:scale-95"
                             >
-                                90日間無料で始める / ログイン
+                                無料で始める / ログイン
                             </button>
                         )}
                     </div>
@@ -229,11 +199,6 @@ export function Header({ onRefreshAnimations }: HeaderProps) {
             </header>
 
             <AuthModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} />
-            <UpgradeModal
-                isOpen={isUpgradeModalOpen}
-                onClose={() => setIsUpgradeModalOpen(false)}
-                trialDaysRemaining={trialDaysRemaining}
-            />
         </>
     );
 }
