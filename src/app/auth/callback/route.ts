@@ -4,11 +4,26 @@ import { createClient } from "@/utils/supabase/server";
 
 export const runtime = "edge";
 
+/**
+ * リダイレクト先パスのサニタイズ（オープンリダイレクト防止）
+ * 外部URLや protocol-relative URL を拒否し、相対パスのみ許可する
+ */
+function sanitizeRedirectPath(path: string | null): string {
+  if (!path) return "/";
+  // protocol-relative URL (//evil.com) を防止
+  if (path.startsWith("//")) return "/";
+  // 絶対URL (https://evil.com 等) を防止
+  if (path.includes("://")) return "/";
+  // / で始まる相対パスのみ許可
+  if (!path.startsWith("/")) return "/";
+  return path;
+}
+
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get("code");
-  // if "next" is in param, use it as the redirect URL
-  const next = searchParams.get("next") ?? "/";
+  // if "next" is in param, use it as the redirect URL (sanitized)
+  const next = sanitizeRedirectPath(searchParams.get("next"));
 
   if (code) {
     const supabase = await createClient();

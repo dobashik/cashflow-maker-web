@@ -22,8 +22,9 @@ export async function GET(request: NextRequest) {
         const result = await updateMasterStockPrices(mode);
         return NextResponse.json(result);
     } catch (error: any) {
+        console.error('[Cron] Update prices error:', error);
         return NextResponse.json(
-            { error: error.message || 'Internal Server Error' },
+            { error: 'Internal Server Error' },
             { status: 500 }
         );
     }
