@@ -11,7 +11,7 @@ jobs:
   supabase_ping:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      actions: write
     steps:
       - name: Send Ping to Supabase API
         run: |
@@ -19,8 +19,5 @@ jobs:
           -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
           -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}"
 
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
       - name: Keep GitHub Actions alive
-        uses: gautamkrishnar/keepalive-workflow@v2
+        uses: liskin/gh-workflow-keepalive@v1

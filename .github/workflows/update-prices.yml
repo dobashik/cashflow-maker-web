@@ -9,8 +9,13 @@ on:
 jobs:
   update-prices:
     runs-on: ubuntu-latest
+    permissions:
+      actions: write
     timeout-minutes: 5
     steps:
+      - name: Keep GitHub Actions alive
+        uses: liskin/gh-workflow-keepalive@v1
+      
       - name: Call API (Full Update)
         run: |
           echo "Starting Full Update..."
