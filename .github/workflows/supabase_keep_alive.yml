@@ -10,9 +10,17 @@ on:
 jobs:
   supabase_ping:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Send Ping to Supabase API
         run: |
-          curl -i -X GET "${{ secrets.SUPABASE_URL }}/rest/v1/" \
+          curl -i -X GET "${{ secrets.SUPABASE_URL }}/rest/v1/holdings?select=id&limit=1" \
           -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
           -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}"
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Keep GitHub Actions alive
+        uses: gautamkrishnar/keepalive-workflow@v2
