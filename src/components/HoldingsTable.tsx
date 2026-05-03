@@ -786,7 +786,7 @@ export function HoldingsTable({ isSampleMode = false, onDataUpdate, onUpgradeCli
             }
 
             <p className="text-xs font-mono text-slate-400 uppercase tracking-wider flex-shrink-0">Holdings List</p>
-            <p className="text-xs text-slate-400 mb-4 mt-1 flex-shrink-0">※サーバーの混雑状況により、株価情報は数時間程度遅延する場合があります。</p>
+            <p className="text-xs text-slate-400 mb-4 mt-1 flex-shrink-0">※システムの負荷軽減のため、株価情報は1日1回（深夜）に自動更新されます。実際の株価とは最大1日程度のズレが生じる場合があります。</p>
 
             <div className="overflow-auto border border-slate-100 rounded-xl flex-grow">
                 <table className="w-full min-w-[1200px] border-collapse bg-white">
