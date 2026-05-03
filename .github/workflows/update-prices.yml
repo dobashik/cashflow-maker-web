@@ -2,8 +2,8 @@ name: Update Stock Prices
 
 on:
   schedule:
-    # テスト用: 5分おきに実行
-    - cron: '*/10 * * * *'
+    # 毎日 日本時間の深夜0時 (UTC 15:00) に実行（テスト用の10分おきから変更）
+    - cron: '0 15 * * *'
   workflow_dispatch:
 
 jobs:
