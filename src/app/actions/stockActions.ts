@@ -80,6 +80,41 @@ export type UpdateResult = {
     message: string;
 };
 
+export type SectorStock = {
+    code: string;
+    name: string;
+    sector: string;
+};
+
+/**
+ * 17業種区分に属する全銘柄をローカルの銘柄マスターから取得する。
+ * 銘柄マスター全体をブラウザへ公開せず、選択された業種だけを返す。
+ */
+export async function getStocksBySector(sector: string): Promise<{
+    success: boolean;
+    stocks: SectorStock[];
+    message?: string;
+}> {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) {
+        return { success: false, stocks: [], message: 'ログインが必要です' };
+    }
+
+    const masterData = await fetchMasterData();
+    const stocks = Object.entries(masterData)
+        .filter(([, item]) => item.sector === sector)
+        .map(([code, item]) => ({
+            code,
+            name: item.name,
+            sector: item.sector,
+        }))
+        .sort((a, b) => a.code.localeCompare(b.code, 'ja', { numeric: true }));
+
+    return { success: true, stocks };
+}
+
 /**
  * 全銘柄の株価を一括更新
  * 
@@ -97,6 +132,17 @@ export type UpdateResult = {
  */
 export async function updateAllStockPrices(userId: string): Promise<UpdateResult> {
     try {
+        const supabase = await createClient();
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user || user.id !== userId) {
+            return {
+                success: false,
+                updatedCount: 0,
+                pricesFound: 0,
+                message: '認証情報を確認できませんでした',
+            };
+        }
+
         // サーバーサイドキャッシュのクリア（画面更新）
         const { revalidatePath } = await import('next/cache');
         revalidatePath('/', 'layout');
@@ -127,6 +173,14 @@ export async function updateAllStockPrices(userId: string): Promise<UpdateResult
 export async function updateAllSectorData(userId: string): Promise<{ success: boolean; updatedCount: number; message: string }> {
     try {
         const supabase = await createClient();
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user || user.id !== userId) {
+            return {
+                success: false,
+                updatedCount: 0,
+                message: '認証情報を確認できませんでした',
+            };
+        }
 
         // Step 1: stocks テーブルから sector が未設定の銘柄コードを取得
         // holdingsではなくstocksを正とする
@@ -645,6 +699,16 @@ export async function updateSpecificStockPrices(userId: string, targetCodes: str
     try {
         const supabase = await createClient();
         const adminSupabase = createServiceRoleClient(); // Stocksテーブル操作用
+        const { data: { user } } = await supabase.auth.getUser();
+
+        if (!user || user.id !== userId) {
+            return {
+                success: false,
+                updatedCount: 0,
+                pricesFound: 0,
+                message: '認証情報を確認できませんでした',
+            };
+        }
 
         if (targetCodes.length === 0) {
             return {
@@ -656,7 +720,35 @@ export async function updateSpecificStockPrices(userId: string, targetCodes: str
         }
 
         // リクエストされたコードの正規化と重複排除
-        const requestedCodes = [...new Set(targetCodes.map(c => String(c).trim()))];
+        const requestedCodes = [...new Set(targetCodes.map(c => String(c).trim()))].slice(0, 200);
+
+        // service roleを使う処理なので、本人が実際に保有する銘柄だけに限定する。
+        const { data: ownedRows, error: ownedError } = await supabase
+            .from('holdings')
+            .select('code')
+            .eq('user_id', user.id)
+            .in('code', requestedCodes);
+
+        if (ownedError) {
+            return {
+                success: false,
+                updatedCount: 0,
+                pricesFound: 0,
+                message: '保有銘柄の確認に失敗しました',
+            };
+        }
+
+        const ownedCodes = new Set((ownedRows || []).map(row => String(row.code).trim()));
+        const authorizedCodes = requestedCodes.filter(code => ownedCodes.has(code));
+        if (authorizedCodes.length === 0) {
+            return {
+                success: false,
+                updatedCount: 0,
+                pricesFound: 0,
+                message: '更新可能な保有銘柄がありません',
+            };
+        }
+
         console.log(`[stockActions] Request to update ${requestedCodes.length} codes`);
 
         // Step 1: 既にstocksテーブルに存在する銘柄を確認
@@ -665,7 +757,7 @@ export async function updateSpecificStockPrices(userId: string, targetCodes: str
         const { data: existingStocks, error: checkError } = await adminSupabase
             .from('stocks')
             .select('code, price') // 価格もチェック対象にする
-            .in('code', requestedCodes);
+            .in('code', authorizedCodes);
 
         if (checkError) {
             console.error('[stockActions] Failed to check existing stocks:', checkError);
@@ -690,7 +782,7 @@ export async function updateSpecificStockPrices(userId: string, targetCodes: str
                 .map(s => s.code) || []
         );
 
-        const targetFetchCodes = requestedCodes.filter(c => !validExistingCodes.has(c));
+        const targetFetchCodes = authorizedCodes.filter(c => !validExistingCodes.has(c));
         console.log(`[stockActions] Fetch Target: ${targetFetchCodes.length} codes (Skipped ${validExistingCodes.size} valid existing)`);
 
         if (targetFetchCodes.length === 0) {

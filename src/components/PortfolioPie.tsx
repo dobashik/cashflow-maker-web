@@ -1,11 +1,19 @@
 'use client';
 
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { useState, useMemo, useEffect } from 'react';
 import { Holding } from '@/lib/mockData';
 import { checkPremiumAccess } from '@/app/actions/subscriptionActions';
-import { Lock, Sparkles } from 'lucide-react';
+import { getStocksBySector, SectorStock } from '@/app/actions/stockActions';
+import { Check, Copy, Lightbulb, Loader2, Lock, Sparkles } from 'lucide-react';
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogHeader,
+    DialogTitle,
+} from '@/components/ui/dialog';
 
 // 1. 17業種マスター定数の定義 (User Specified)
 const SECTOR_MASTER_LIST = [
@@ -20,13 +28,16 @@ const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d'
 export function PortfolioPie({ holdings = [], onUpgradeClick, isSampleMode = false }: { holdings?: Holding[], onUpgradeClick?: () => void, isSampleMode?: boolean }) {
     const [hoveredSector, setHoveredSector] = useState<string | null>(null);
     const [hasAccess, setHasAccess] = useState(true);
+    const [ownedSector, setOwnedSector] = useState<string | null>(null);
+    const [candidateSector, setCandidateSector] = useState<string | null>(null);
+    const [sectorStocks, setSectorStocks] = useState<SectorStock[]>([]);
+    const [isLoadingCandidates, setIsLoadingCandidates] = useState(false);
+    const [candidateError, setCandidateError] = useState('');
+    const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
     useEffect(() => {
         // サンプルモードの場合はチェックせず、アクセス許可
-        if (isSampleMode) {
-            setHasAccess(true);
-            return;
-        }
+        if (isSampleMode) return;
         const check = async () => {
             const result = await checkPremiumAccess();
             setHasAccess(result.hasAccess);
@@ -73,7 +84,7 @@ export function PortfolioPie({ holdings = [], onUpgradeClick, isSampleMode = fal
         }
 
         // Step 3: Sort by value descending
-        let sorted = result.sort((a, b) => b.value - a.value);
+        const sorted = result.sort((a, b) => b.value - a.value);
 
         // 無料ユーザー制限: 上位3セクターのみ表示、残りは「その他（ロック）」としてまとめる
         if (!hasAccess && sorted.length > 3) {
@@ -101,8 +112,90 @@ export function PortfolioPie({ holdings = [], onUpgradeClick, isSampleMode = fal
     // Filter for Pie Chart (Assets > 0 only)
     const pieData = useMemo(() => data.filter(d => d.value > 0), [data]);
 
+    const selectedOwnedHoldings = useMemo(
+        () => holdings
+            .filter(item => {
+                const normalizedSector = SECTOR_MASTER_LIST.includes(item.sector) ? item.sector : 'その他';
+                return normalizedSector === ownedSector;
+            })
+            .sort((a, b) => a.code.localeCompare(b.code, 'ja', { numeric: true })),
+        [holdings, ownedSector]
+    );
+
+    const heldCodes = useMemo(
+        () => new Set(holdings.map(item => String(item.code).trim())),
+        [holdings]
+    );
+
+    const unownedSectorStocks = useMemo(
+        () => sectorStocks.filter(stock => !heldCodes.has(stock.code)),
+        [sectorStocks, heldCodes]
+    );
+
+    const copyCodes = async (codes: string[], key: string) => {
+        if (codes.length === 0) return;
+        const text = codes.join('\n');
+
+        try {
+            await navigator.clipboard.writeText(text);
+        } catch {
+            const textarea = document.createElement('textarea');
+            textarea.value = text;
+            textarea.style.position = 'fixed';
+            textarea.style.opacity = '0';
+            document.body.appendChild(textarea);
+            textarea.focus();
+            textarea.select();
+            const copied = document.execCommand('copy');
+            textarea.remove();
+
+            if (!copied) {
+                alert('クリップボードへのコピーに失敗しました');
+                return;
+            }
+        }
+
+        setCopiedKey(key);
+        window.setTimeout(() => setCopiedKey(null), 1800);
+    };
+
+    const copySingleCode = (code: string) => {
+        void copyCodes([code], `code-${code}`);
+    };
+
+    const openOwnedSector = (sector: string, count: number) => {
+        if (count === 0 || sector === 'その他（ロック）') return;
+        setOwnedSector(sector);
+    };
+
+    const openCandidateSector = async (sector: string) => {
+        if (isSampleMode) {
+            alert('未保有銘柄の検索を利用するにはログインしてください');
+            return;
+        }
+
+        setCandidateSector(sector);
+        setSectorStocks([]);
+        setCandidateError('');
+        setIsLoadingCandidates(true);
+
+        try {
+            const result = await getStocksBySector(sector);
+            if (!result.success) {
+                setCandidateError(result.message || '銘柄マスターの取得に失敗しました');
+                return;
+            }
+            setSectorStocks(result.stocks);
+        } catch (error) {
+            console.error('Failed to load sector stocks:', error);
+            setCandidateError('銘柄マスターの取得に失敗しました');
+        } finally {
+            setIsLoadingCandidates(false);
+        }
+    };
+
     return (
-        <div className="bg-white rounded-2xl p-6 shadow-sm border border-indigo-50 relative overflow-hidden h-full">
+        <div className="bg-white rounded-2xl p-6 shadow-sm border border-indigo-50 relative h-full">
             <h3 className="text-xl font-bold text-indigo-900 mb-2 flex items-center gap-2">
                 セクター分析
             </h3>
@@ -129,6 +222,7 @@ export function PortfolioPie({ holdings = [], onUpgradeClick, isSampleMode = fal
                                     key={entry.name}
                                     onMouseEnter={() => setHoveredSector(entry.name)}
                                     onMouseLeave={() => setHoveredSector(null)}
+                                    onClick={() => openOwnedSector(entry.name, entry.count)}
                                     initial={{ opacity: 0, x: -20 }}
                                     whileInView={{ opacity: 1, x: 0 }}
                                     viewport={{ once: true }}
@@ -138,7 +232,7 @@ export function PortfolioPie({ holdings = [], onUpgradeClick, isSampleMode = fal
                                     transition={{ delay: index * 0.05 }}
                                     className={`
                                         flex items-center justify-between py-3 border-b border-slate-100 last:border-0 cursor-pointer transition-all
-                                        ${isZero ? 'opacity-50' : ''}
+                                        ${isZero ? 'opacity-50 cursor-default' : 'cursor-pointer hover:bg-indigo-50/50'}
                                     `}
                                 >
                                     {/* Left Block */}
@@ -205,6 +299,7 @@ export function PortfolioPie({ holdings = [], onUpgradeClick, isSampleMode = fal
                                         animationDuration={1500}
                                         onMouseEnter={(_, index) => setHoveredSector(pieData[index].name)}
                                         onMouseLeave={() => setHoveredSector(null)}
+                                        onClick={(_, index) => openOwnedSector(pieData[index].name, pieData[index].count)}
                                     >
                                         {pieData.map((entry, index) => {
                                             const isHovered = hoveredSector === entry.name;
@@ -227,7 +322,7 @@ export function PortfolioPie({ holdings = [], onUpgradeClick, isSampleMode = fal
                                         })}
                                     </Pie>
                                     <Tooltip
-                                        formatter={(value: any) => `¥${Number(value).toLocaleString()}`}
+                                        formatter={(value: number | string | undefined) => `¥${Number(value || 0).toLocaleString()}`}
                                         contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)' }}
                                     />
                                 </PieChart>
@@ -246,6 +341,161 @@ export function PortfolioPie({ holdings = [], onUpgradeClick, isSampleMode = fal
                     )}
                 </div>
             </div>
+
+            <div className="mt-8 border-t border-slate-100 pt-6">
+                <div className="flex items-start gap-3 mb-4">
+                    <div className="rounded-xl bg-amber-50 p-2 text-amber-600">
+                        <Lightbulb className="w-5 h-5" />
+                    </div>
+                    <div>
+                        <h4 className="font-bold text-slate-800">新規銘柄を探す</h4>
+                        <p className="text-xs text-slate-500 mt-1">17業種を選ぶと、現在保有していない銘柄を一覧表示します。</p>
+                    </div>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                    {SECTOR_MASTER_LIST.map(sector => (
+                        <button
+                            key={sector}
+                            type="button"
+                            onClick={() => openCandidateSector(sector)}
+                            className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-600 transition-colors hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700"
+                        >
+                            {sector}
+                        </button>
+                    ))}
+                </div>
+            </div>
+
+            <Dialog open={ownedSector !== null} onOpenChange={(open) => !open && setOwnedSector(null)}>
+                <DialogContent className="max-w-3xl max-h-[80vh] overflow-hidden flex flex-col">
+                    <DialogHeader>
+                        <DialogTitle>{ownedSector}の保有銘柄</DialogTitle>
+                        <DialogDescription>
+                            {selectedOwnedHoldings.length}銘柄を保有しています。
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="flex justify-end mb-3">
+                        <button
+                            type="button"
+                            onClick={() => copyCodes(selectedOwnedHoldings.map(stock => stock.code), 'owned')}
+                            className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-3 py-2 text-sm font-bold text-white hover:bg-indigo-700"
+                        >
+                            {copiedKey === 'owned' ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                            {copiedKey === 'owned' ? 'コピーしました' : '全銘柄コードをコピー'}
+                        </button>
+                    </div>
+                    <div className="overflow-auto rounded-xl border border-slate-200">
+                        <table className="w-full text-sm">
+                            <thead className="sticky top-0 bg-slate-50 text-left text-xs text-slate-500">
+                                <tr>
+                                    <th className="px-4 py-3">コード</th>
+                                    <th className="px-4 py-3">銘柄名</th>
+                                    <th className="px-4 py-3 text-right">保有株数</th>
+                                    <th className="px-4 py-3 text-right">評価額</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                                {selectedOwnedHoldings.map(stock => (
+                                    <tr key={stock.code} className="hover:bg-indigo-50/40">
+                                        <td className="px-4 py-3">
+                                            <button
+                                                type="button"
+                                                onClick={() => copySingleCode(stock.code)}
+                                                title={`${stock.code}をコピー`}
+                                                className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 font-mono font-bold text-indigo-700 transition-colors hover:bg-indigo-100"
+                                            >
+                                                {stock.code}
+                                                {copiedKey === `code-${stock.code}`
+                                                    ? <Check className="w-3.5 h-3.5 text-emerald-600" />
+                                                    : <Copy className="w-3.5 h-3.5 text-indigo-400" />}
+                                            </button>
+                                        </td>
+                                        <td className="px-4 py-3 text-slate-700">{stock.name}</td>
+                                        <td className="px-4 py-3 text-right text-slate-600">{stock.quantity.toLocaleString()}</td>
+                                        <td className="px-4 py-3 text-right font-medium text-slate-800">
+                                            ¥{Math.round(stock.price * stock.quantity).toLocaleString()}
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={candidateSector !== null} onOpenChange={(open) => !open && setCandidateSector(null)}>
+                <DialogContent className="max-w-4xl max-h-[82vh] overflow-hidden flex flex-col">
+                    <DialogHeader>
+                        <DialogTitle>{candidateSector}の未保有銘柄</DialogTitle>
+                        <DialogDescription>
+                            `stock_master.csv`の17業種区分から、保有中のコードを除外しています。
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    {isLoadingCandidates ? (
+                        <div className="flex min-h-48 items-center justify-center gap-2 text-slate-500">
+                            <Loader2 className="w-5 h-5 animate-spin text-indigo-600" />
+                            銘柄マスターを読み込み中...
+                        </div>
+                    ) : candidateError ? (
+                        <div className="rounded-xl bg-rose-50 p-4 text-sm text-rose-700">{candidateError}</div>
+                    ) : (
+                        <>
+                            <div className="flex items-center justify-between gap-4 mb-3">
+                                <p className="text-sm text-slate-500">{unownedSectorStocks.length}銘柄</p>
+                                <button
+                                    type="button"
+                                    onClick={() => copyCodes(unownedSectorStocks.map(stock => stock.code), 'candidates')}
+                                    disabled={unownedSectorStocks.length === 0}
+                                    className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-3 py-2 text-sm font-bold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-40"
+                                >
+                                    {copiedKey === 'candidates' ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                                    {copiedKey === 'candidates' ? 'コピーしました' : '全銘柄コードをコピー'}
+                                </button>
+                            </div>
+                            <div className="overflow-auto rounded-xl border border-slate-200">
+                                <table className="w-full text-sm">
+                                    <thead className="sticky top-0 bg-slate-50 text-left text-xs text-slate-500">
+                                        <tr>
+                                            <th className="px-4 py-3">コード</th>
+                                            <th className="px-4 py-3">銘柄名</th>
+                                            <th className="px-4 py-3">17業種区分</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100">
+                                        {unownedSectorStocks.map(stock => (
+                                            <tr key={stock.code} className="hover:bg-indigo-50/40">
+                                                <td className="px-4 py-3">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => copySingleCode(stock.code)}
+                                                        title={`${stock.code}をコピー`}
+                                                        className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 font-mono font-bold text-indigo-700 transition-colors hover:bg-indigo-100"
+                                                    >
+                                                        {stock.code}
+                                                        {copiedKey === `code-${stock.code}`
+                                                            ? <Check className="w-3.5 h-3.5 text-emerald-600" />
+                                                            : <Copy className="w-3.5 h-3.5 text-indigo-400" />}
+                                                    </button>
+                                                </td>
+                                                <td className="px-4 py-3 text-slate-700">{stock.name}</td>
+                                                <td className="px-4 py-3 text-slate-500">{stock.sector}</td>
+                                            </tr>
+                                        ))}
+                                        {unownedSectorStocks.length === 0 && (
+                                            <tr>
+                                                <td colSpan={3} className="px-4 py-12 text-center text-slate-400">
+                                                    未保有銘柄はありません。
+                                                </td>
+                                            </tr>
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </>
+                    )}
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }
