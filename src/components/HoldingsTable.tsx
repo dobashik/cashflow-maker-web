@@ -42,6 +42,34 @@ const getRankColor = (rank: string) => {
 // 無料ユーザーが表示できる銘柄数
 const FREE_TIER_LIMIT = 5;
 
+const getHistoryDataDate = (fileNames: string[]): string => {
+    const dates = fileNames.flatMap(fileName => {
+        const match = fileName.match(/(?:^|\D)(20\d{2})[-_.]?(\d{2})[-_.]?(\d{2})(?:[T _.-]?(\d{2})[-_.]?(\d{2})(?:[-_.]?(\d{2}))?)?/);
+        if (!match) return [];
+
+        const [, year, month, day, hour = '00', minute = '00', second = '00'] = match;
+        const date = new Date(
+            Number(year),
+            Number(month) - 1,
+            Number(day),
+            Number(hour),
+            Number(minute),
+            Number(second)
+        );
+
+        if (
+            date.getFullYear() !== Number(year)
+            || date.getMonth() !== Number(month) - 1
+            || date.getDate() !== Number(day)
+        ) return [];
+
+        return [date];
+    });
+
+    const latestDate = dates.sort((a, b) => b.getTime() - a.getTime())[0];
+    return (latestDate || new Date()).toISOString();
+};
+
 const aggregatePortfolioByCode = (items: Holding[]): Holding[] => {
     const map = new Map<string, Holding>();
 
@@ -332,40 +360,44 @@ export function HoldingsTable({ isSampleMode = false, onDataUpdate, onUpgradeCli
         }
     }, [activeTab, loadHistory]);
 
+    const previousHistory = useMemo(() => {
+        if (!selectedHistory) return null;
+        const selectedIndex = history.findIndex(entry => entry.id === selectedHistory.id);
+        return selectedIndex >= 0 ? history[selectedIndex + 1] || null : null;
+    }, [history, selectedHistory]);
+
     const comparisonRows = useMemo(() => {
         if (!selectedHistory) return [];
 
-        const pastMap = new Map(aggregatePortfolioByCode(selectedHistory.holdings).map(item => [item.code, item]));
-        const currentMap = new Map(aggregatePortfolioByCode(holdings).map(item => [item.code, item]));
-        const codes = Array.from(new Set([...pastMap.keys(), ...currentMap.keys()]))
-            .sort((a, b) => a.localeCompare(b, 'ja', { numeric: true }));
+        const previousMap = new Map(
+            aggregatePortfolioByCode(previousHistory?.holdings || []).map(item => [item.code, item])
+        );
+        const selectedItems = aggregatePortfolioByCode(selectedHistory.holdings);
 
-        return codes.map(code => ({
-            code,
-            name: currentMap.get(code)?.name || pastMap.get(code)?.name || code,
-            past: pastMap.get(code),
-            current: currentMap.get(code),
+        return selectedItems.map(current => ({
+            code: current.code,
+            name: current.name,
+            previous: previousMap.get(current.code),
+            current,
         }));
-    }, [holdings, selectedHistory]);
+    }, [previousHistory, selectedHistory]);
 
     const comparisonSummary = useMemo(() => {
-        const pastCodes = new Set(
-            selectedHistory
-                ? aggregatePortfolioByCode(selectedHistory.holdings).map(item => item.code)
-                : []
-        );
-        const currentCodes = new Set(aggregatePortfolioByCode(holdings).map(item => item.code));
-        const added = Array.from(currentCodes).filter(code => !pastCodes.has(code)).length;
-        const removed = Array.from(pastCodes).filter(code => !currentCodes.has(code)).length;
+        const previousItems = aggregatePortfolioByCode(previousHistory?.holdings || []);
+        const selectedItems = aggregatePortfolioByCode(selectedHistory?.holdings || []);
+        const previousCodes = new Set(previousItems.map(item => item.code));
+        const selectedCodes = new Set(selectedItems.map(item => item.code));
+        const added = Array.from(selectedCodes).filter(code => !previousCodes.has(code)).length;
+        const removedItems = previousItems.filter(item => !selectedCodes.has(item.code));
 
         return {
-            pastCount: pastCodes.size,
-            currentCount: currentCodes.size,
-            countDiff: currentCodes.size - pastCodes.size,
+            previousCount: previousCodes.size,
+            selectedCount: selectedCodes.size,
+            countDiff: selectedCodes.size - previousCodes.size,
             added,
-            removed,
+            removedItems,
         };
-    }, [holdings, selectedHistory]);
+    }, [previousHistory, selectedHistory]);
 
     // 5. Animation Variants
     const container = {
@@ -533,7 +565,8 @@ export function HoldingsTable({ isSampleMode = false, onDataUpdate, onUpgradeCli
                     newHoldings,
                     mode,
                     isAppendMode,
-                    files.map(file => file.name)
+                    files.map(file => file.name),
+                    getHistoryDataDate(files.map(file => file.name))
                 );
 
                 if (!result.success) {
@@ -1200,7 +1233,8 @@ export function HoldingsTable({ isSampleMode = false, onDataUpdate, onUpgradeCli
                                                 )}
                                             </div>
                                             <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-xs text-slate-500">
-                                                <span className="flex items-center gap-1"><Clock3 className="h-3.5 w-3.5" />{new Date(entry.createdAt).toLocaleString('ja-JP')}</span>
+                                                <span className="flex items-center gap-1"><Clock3 className="h-3.5 w-3.5" />CSV基準 {new Date(entry.dataDate).toLocaleString('ja-JP')}</span>
+                                                <span>取込 {new Date(entry.createdAt).toLocaleString('ja-JP')}</span>
                                                 <span>評価額 ¥{Math.round(entry.totalValue).toLocaleString()}</span>
                                             </div>
                                             <details className="group mt-3">
@@ -1248,19 +1282,20 @@ export function HoldingsTable({ isSampleMode = false, onDataUpdate, onUpgradeCli
                 <DialogContent className="max-w-5xl max-h-[85vh] overflow-hidden flex flex-col">
                     <DialogHeader>
                         <DialogTitle className="flex items-center gap-2">
-                            <GitCompare className="h-5 w-5 text-indigo-600" /> 現在のポートフォリオと比較
+                            <GitCompare className="h-5 w-5 text-indigo-600" /> インポート内容と前回履歴の比較
                         </DialogTitle>
                         <DialogDescription>
-                            {selectedHistory && new Date(selectedHistory.createdAt).toLocaleString('ja-JP')} 時点の履歴です。過去データは編集されません。
+                            この一覧には、選択したCSVに含まれていた銘柄だけを表示します。履歴データは後から書き換えられません。
                         </DialogDescription>
                     </DialogHeader>
                     <div className="flex flex-wrap gap-2 text-xs">
                         <span className="rounded-full bg-slate-100 px-3 py-1.5 font-bold text-slate-600">
-                            銘柄数 {comparisonSummary.pastCount} → {comparisonSummary.currentCount}
-                            （{comparisonSummary.countDiff > 0 ? '+' : ''}{comparisonSummary.countDiff}）
+                            {previousHistory
+                                ? `銘柄数 ${comparisonSummary.previousCount} → ${comparisonSummary.selectedCount}（${comparisonSummary.countDiff > 0 ? '+' : ''}${comparisonSummary.countDiff}）`
+                                : `初回履歴 ${comparisonSummary.selectedCount}銘柄`}
                         </span>
-                        <span className="rounded-full bg-rose-50 px-3 py-1.5 font-bold text-rose-600">新規 {comparisonSummary.added}</span>
-                        <span className="rounded-full bg-blue-50 px-3 py-1.5 font-bold text-blue-600">保有終了 {comparisonSummary.removed}</span>
+                        {previousHistory && <span className="rounded-full bg-rose-50 px-3 py-1.5 font-bold text-rose-600">新規 {comparisonSummary.added}</span>}
+                        {previousHistory && <span className="rounded-full bg-blue-50 px-3 py-1.5 font-bold text-blue-600">保有終了 {comparisonSummary.removedItems.length}</span>}
                     </div>
                     <div className="overflow-auto rounded-xl border border-slate-200">
                         <table className="w-full min-w-[850px] text-sm">
@@ -1268,31 +1303,42 @@ export function HoldingsTable({ isSampleMode = false, onDataUpdate, onUpgradeCli
                                 <tr>
                                     <th className="px-4 py-3 text-left">コード</th>
                                     <th className="px-4 py-3 text-left">銘柄名</th>
-                                    <th className="px-4 py-3 text-right">過去株数</th>
-                                    <th className="px-4 py-3 text-right">現在株数</th>
+                                    <th className="px-4 py-3 text-center">状態</th>
+                                    <th className="px-4 py-3 text-right">前回株数</th>
+                                    <th className="px-4 py-3 text-right">今回株数</th>
                                     <th className="px-4 py-3 text-right">増減</th>
-                                    <th className="px-4 py-3 text-right">過去評価額</th>
-                                    <th className="px-4 py-3 text-right">現在評価額</th>
+                                    <th className="px-4 py-3 text-right">前回評価額</th>
+                                    <th className="px-4 py-3 text-right">今回評価額</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100">
                                 {comparisonRows.map(row => {
-                                    const pastQuantity = row.past?.quantity || 0;
+                                    const pastQuantity = row.previous?.quantity || 0;
                                     const currentQuantity = row.current?.quantity || 0;
                                     const quantityDiff = currentQuantity - pastQuantity;
-                                    const pastValue = (row.past?.price || 0) * pastQuantity;
+                                    const pastValue = (row.previous?.price || 0) * pastQuantity;
                                     const currentValue = (row.current?.price || 0) * currentQuantity;
 
                                     return (
                                         <tr key={row.code} className="hover:bg-indigo-50/40">
                                             <td className="px-4 py-3 font-mono font-bold text-indigo-700">{row.code}</td>
                                             <td className="px-4 py-3 text-slate-700">{row.name}</td>
-                                            <td className="px-4 py-3 text-right text-slate-500">{pastQuantity.toLocaleString()}</td>
+                                            <td className="px-4 py-3 text-center">
+                                                <span className={`rounded-full px-2 py-1 text-[10px] font-bold ${!previousHistory
+                                                    ? 'bg-slate-100 text-slate-500'
+                                                    : row.previous
+                                                        ? 'bg-emerald-50 text-emerald-700'
+                                                        : 'bg-rose-50 text-rose-600'
+                                                    }`}>
+                                                    {!previousHistory ? '初回' : row.previous ? '継続' : '新規'}
+                                                </span>
+                                            </td>
+                                            <td className="px-4 py-3 text-right text-slate-500">{previousHistory ? pastQuantity.toLocaleString() : '-'}</td>
                                             <td className="px-4 py-3 text-right font-medium text-slate-800">{currentQuantity.toLocaleString()}</td>
                                             <td className={`px-4 py-3 text-right font-bold ${quantityDiff > 0 ? 'text-rose-500' : quantityDiff < 0 ? 'text-blue-500' : 'text-slate-400'}`}>
-                                                {quantityDiff > 0 ? '+' : ''}{quantityDiff.toLocaleString()}
+                                                {previousHistory ? `${quantityDiff > 0 ? '+' : ''}${quantityDiff.toLocaleString()}` : '-'}
                                             </td>
-                                            <td className="px-4 py-3 text-right text-slate-500">¥{Math.round(pastValue).toLocaleString()}</td>
+                                            <td className="px-4 py-3 text-right text-slate-500">{previousHistory ? `¥${Math.round(pastValue).toLocaleString()}` : '-'}</td>
                                             <td className="px-4 py-3 text-right font-medium text-slate-800">¥{Math.round(currentValue).toLocaleString()}</td>
                                         </tr>
                                     );
@@ -1300,6 +1346,21 @@ export function HoldingsTable({ isSampleMode = false, onDataUpdate, onUpgradeCli
                             </tbody>
                         </table>
                     </div>
+                    {comparisonSummary.removedItems.length > 0 && (
+                        <details className="group rounded-xl border border-blue-100 bg-blue-50/60 p-3">
+                            <summary className="flex cursor-pointer list-none items-center gap-1 text-xs font-bold text-blue-700">
+                                <ChevronDown className="h-3.5 w-3.5 transition-transform group-open:rotate-180" />
+                                前回から保有終了した銘柄 {comparisonSummary.removedItems.length}件
+                            </summary>
+                            <div className="mt-2 flex flex-wrap gap-2">
+                                {comparisonSummary.removedItems.map(item => (
+                                    <span key={item.code} className="rounded-lg bg-white px-2.5 py-1.5 text-xs text-slate-600">
+                                        <span className="mr-1 font-mono font-bold text-blue-700">{item.code}</span>{item.name}
+                                    </span>
+                                ))}
+                            </div>
+                        </details>
+                    )}
                 </DialogContent>
             </Dialog>
         </div >

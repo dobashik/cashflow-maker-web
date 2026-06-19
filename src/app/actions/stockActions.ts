@@ -94,6 +94,7 @@ export type PortfolioHistory = {
     itemCount: number;
     totalValue: number;
     fileNames: string[];
+    dataDate: string;
     createdAt: string;
 };
 
@@ -402,7 +403,8 @@ export async function saveHoldingsToSupabase(
     newItems: Holding[],
     currentImportMode: 'SBI' | 'RAKUTEN',
     isAppendMode: boolean,
-    fileNames: string[] = []
+    fileNames: string[] = [],
+    dataDate?: string
 ): Promise<{ success: boolean; message: string; userId?: string; historySaved?: boolean }> {
     try {
         const supabase = await createClient();
@@ -580,61 +582,37 @@ export async function saveHoldingsToSupabase(
             return { success: false, message: `データの保存に失敗しました: ${upsertError.message || JSON.stringify(upsertError)}` };
         }
 
-        // CSV取込後のポートフォリオ全体を履歴として保存する。
-        const { data: snapshotRows, error: snapshotFetchError } = await supabase
-            .from('holdings')
-            .select('*')
-            .eq('user_id', user.id);
-
+        // 履歴にはDB全体ではなく、この操作で選択されたCSVの内容だけを固定保存する。
+        // 後続のインポートで現在のポートフォリオが変わっても、この配列は変化しない。
         let historySaved = false;
-        if (snapshotFetchError) {
-            console.error('Portfolio History Fetch Error:', snapshotFetchError);
+        const importedHoldings = newItems.map(item => ({
+            ...item,
+            code: String(item.code).trim(),
+        }));
+        const importedTotalValue = importedHoldings.reduce(
+            (sum, holding) => sum + holding.price * holding.quantity,
+            0
+        );
+
+        const { error: historyError } = await supabase
+            .from('portfolio_history')
+            .insert({
+                user_id: user.id,
+                source: targetSource,
+                import_mode: isAppendMode ? 'append' : 'replace',
+                holdings_data: importedHoldings,
+                item_count: new Set(
+                    importedHoldings.map(holding => holding.code).filter(Boolean)
+                ).size,
+                total_value: importedTotalValue,
+                file_names: fileNames,
+                data_date: dataDate || new Date().toISOString(),
+            });
+
+        if (historyError) {
+            console.error('Portfolio History Insert Error:', historyError);
         } else {
-            const snapshotHoldings: Holding[] = (snapshotRows || []).map(row => ({
-                code: String(row.code),
-                name: row.name,
-                quantity: Number(row.quantity),
-                price: Number(row.price),
-                dividendPerShare: Number(row.dividend_per_share),
-                sector: row.sector || '',
-                sector33: row.sector_33 || '',
-                acquisitionPrice: Number(row.acquisition_price),
-                totalGainLoss: Number(row.total_gain_loss),
-                source: row.source || '',
-                accountType: row.account_type || '',
-                dividendMonths: row.dividend_months || [],
-                fiscalYearMonth: row.fiscal_year_month,
-                ir_rank: row.ir_rank,
-                ir_score: row.ir_score,
-                ir_detail: row.ir_detail,
-                ir_flag: row.ir_flag,
-                ir_date: row.ir_date,
-            }));
-
-            const totalValue = snapshotHoldings.reduce(
-                (sum, holding) => sum + holding.price * holding.quantity,
-                0
-            );
-
-            const { error: historyError } = await supabase
-                .from('portfolio_history')
-                .insert({
-                    user_id: user.id,
-                    source: targetSource,
-                    import_mode: isAppendMode ? 'append' : 'replace',
-                    holdings_data: snapshotHoldings,
-                    item_count: new Set(
-                        snapshotHoldings.map(holding => String(holding.code).trim()).filter(Boolean)
-                    ).size,
-                    total_value: totalValue,
-                    file_names: fileNames,
-                });
-
-            if (historyError) {
-                console.error('Portfolio History Insert Error:', historyError);
-            } else {
-                historySaved = true;
-            }
+            historySaved = true;
         }
 
         return {
@@ -666,7 +644,7 @@ export async function getPortfolioHistory(): Promise<{
 
     const { data, error } = await supabase
         .from('portfolio_history')
-        .select('id, source, import_mode, holdings_data, item_count, total_value, file_names, created_at')
+        .select('id, source, import_mode, holdings_data, item_count, total_value, file_names, data_date, created_at')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false });
 
@@ -685,6 +663,7 @@ export async function getPortfolioHistory(): Promise<{
             itemCount: Number(row.item_count),
             totalValue: Number(row.total_value),
             fileNames: Array.isArray(row.file_names) ? row.file_names : [],
+            dataDate: row.data_date || row.created_at,
             createdAt: row.created_at,
         })),
     };
