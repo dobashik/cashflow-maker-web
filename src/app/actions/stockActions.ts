@@ -86,6 +86,16 @@ export type SectorStock = {
     sector: string;
 };
 
+export type PortfolioHistory = {
+    id: string;
+    source: 'SBI' | 'Rakuten';
+    importMode: 'replace' | 'append';
+    holdings: Holding[];
+    itemCount: number;
+    totalValue: number;
+    createdAt: string;
+};
+
 /**
  * 17業種区分に属する全銘柄をローカルの銘柄マスターから取得する。
  * 銘柄マスター全体をブラウザへ公開せず、選択された業種だけを返す。
@@ -391,7 +401,7 @@ export async function saveHoldingsToSupabase(
     newItems: Holding[],
     currentImportMode: 'SBI' | 'RAKUTEN',
     isAppendMode: boolean
-): Promise<{ success: boolean; message: string; userId?: string }> {
+): Promise<{ success: boolean; message: string; userId?: string; historySaved?: boolean }> {
     try {
         const supabase = await createClient();
         const { data: { user } } = await supabase.auth.getUser();
@@ -568,12 +578,135 @@ export async function saveHoldingsToSupabase(
             return { success: false, message: `データの保存に失敗しました: ${upsertError.message || JSON.stringify(upsertError)}` };
         }
 
-        return { success: true, message: "データを保存しました", userId: user.id };
+        // CSV取込後のポートフォリオ全体を履歴として保存する。
+        const { data: snapshotRows, error: snapshotFetchError } = await supabase
+            .from('holdings')
+            .select('*')
+            .eq('user_id', user.id);
+
+        let historySaved = false;
+        if (snapshotFetchError) {
+            console.error('Portfolio History Fetch Error:', snapshotFetchError);
+        } else {
+            const snapshotHoldings: Holding[] = (snapshotRows || []).map(row => ({
+                code: String(row.code),
+                name: row.name,
+                quantity: Number(row.quantity),
+                price: Number(row.price),
+                dividendPerShare: Number(row.dividend_per_share),
+                sector: row.sector || '',
+                sector33: row.sector_33 || '',
+                acquisitionPrice: Number(row.acquisition_price),
+                totalGainLoss: Number(row.total_gain_loss),
+                source: row.source || '',
+                accountType: row.account_type || '',
+                dividendMonths: row.dividend_months || [],
+                fiscalYearMonth: row.fiscal_year_month,
+                ir_rank: row.ir_rank,
+                ir_score: row.ir_score,
+                ir_detail: row.ir_detail,
+                ir_flag: row.ir_flag,
+                ir_date: row.ir_date,
+            }));
+
+            const totalValue = snapshotHoldings.reduce(
+                (sum, holding) => sum + holding.price * holding.quantity,
+                0
+            );
+
+            const { error: historyError } = await supabase
+                .from('portfolio_history')
+                .insert({
+                    user_id: user.id,
+                    source: targetSource,
+                    import_mode: isAppendMode ? 'append' : 'replace',
+                    holdings_data: snapshotHoldings,
+                    item_count: new Set(snapshotHoldings.map(holding => holding.code)).size,
+                    total_value: totalValue,
+                });
+
+            if (historyError) {
+                console.error('Portfolio History Insert Error:', historyError);
+            } else {
+                historySaved = true;
+            }
+        }
+
+        return {
+            success: true,
+            message: historySaved
+                ? 'データと履歴を保存しました'
+                : 'データを保存しました（履歴テーブルの設定後、履歴保存が有効になります）',
+            userId: user.id,
+            historySaved,
+        };
 
     } catch (error) {
         console.error("saveHoldingsToSupabase error:", error);
         return { success: false, message: "サーバーエラーが発生しました" };
     }
+}
+
+export async function getPortfolioHistory(): Promise<{
+    success: boolean;
+    history: PortfolioHistory[];
+    message?: string;
+}> {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) {
+        return { success: false, history: [], message: 'ログインが必要です' };
+    }
+
+    const { data, error } = await supabase
+        .from('portfolio_history')
+        .select('id, source, import_mode, holdings_data, item_count, total_value, created_at')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
+
+    if (error) {
+        console.error('Portfolio History Fetch Error:', error);
+        return { success: false, history: [], message: '履歴の取得に失敗しました' };
+    }
+
+    return {
+        success: true,
+        history: (data || []).map(row => ({
+            id: row.id,
+            source: row.source as 'SBI' | 'Rakuten',
+            importMode: row.import_mode as 'replace' | 'append',
+            holdings: Array.isArray(row.holdings_data) ? row.holdings_data as Holding[] : [],
+            itemCount: Number(row.item_count),
+            totalValue: Number(row.total_value),
+            createdAt: row.created_at,
+        })),
+    };
+}
+
+export async function deletePortfolioHistory(historyId: string): Promise<{
+    success: boolean;
+    message: string;
+}> {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) {
+        return { success: false, message: 'ログインが必要です' };
+    }
+
+    const { error } = await supabase
+        .from('portfolio_history')
+        .delete()
+        .eq('id', historyId)
+        .eq('user_id', user.id);
+
+    if (error) {
+        console.error('Portfolio History Delete Error:', error);
+        return { success: false, message: '履歴の削除に失敗しました' };
+    }
+
+    return { success: true, message: '履歴を削除しました' };
 }
 
 /**

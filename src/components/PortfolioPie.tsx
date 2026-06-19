@@ -5,7 +5,8 @@ import { motion } from 'framer-motion';
 import { useState, useMemo, useEffect } from 'react';
 import { Holding } from '@/lib/mockData';
 import { checkPremiumAccess } from '@/app/actions/subscriptionActions';
-import { getStocksBySector, SectorStock } from '@/app/actions/stockActions';
+import { getStocksBySector } from '@/app/actions/stockActions';
+import type { SectorStock } from '@/app/actions/stockActions';
 import { Check, Copy, Lightbulb, Loader2, Lock, Sparkles } from 'lucide-react';
 import {
     Dialog,
@@ -198,6 +199,9 @@ export function PortfolioPie({ holdings = [], onUpgradeClick, isSampleMode = fal
         <div className="bg-white rounded-2xl p-6 shadow-sm border border-indigo-50 relative h-full">
             <h3 className="text-xl font-bold text-indigo-900 mb-2 flex items-center gap-2">
                 セクター分析
+                <span className="rounded-full bg-indigo-100 px-2.5 py-1 text-xs font-bold text-indigo-700">
+                    {holdings.length}銘柄
+                </span>
             </h3>
             <p className="text-xs font-mono text-slate-400 mb-6 uppercase tracking-wider">SECTOR ANALYSIS</p>
 
