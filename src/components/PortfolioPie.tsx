@@ -36,6 +36,26 @@ export function PortfolioPie({ holdings = [], onUpgradeClick, isSampleMode = fal
     const [candidateError, setCandidateError] = useState('');
     const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
+    const aggregatedHoldings = useMemo(() => {
+        const byCode = new Map<string, Holding>();
+        holdings.forEach(item => {
+            const code = String(item.code).trim();
+            if (!code) return;
+            const existing = byCode.get(code);
+            if (!existing) {
+                byCode.set(code, { ...item, code });
+                return;
+            }
+            byCode.set(code, {
+                ...existing,
+                quantity: existing.quantity + item.quantity,
+                totalGainLoss: existing.totalGainLoss + item.totalGainLoss,
+                sector: existing.sector || item.sector,
+            });
+        });
+        return Array.from(byCode.values());
+    }, [holdings]);
+
     useEffect(() => {
         // サンプルモードの場合はチェックせず、アクセス許可
         if (isSampleMode) return;
@@ -51,7 +71,7 @@ export function PortfolioPie({ holdings = [], onUpgradeClick, isSampleMode = fal
         // Step 1: Aggregate by sector
         const sectorCalc = new Map<string, { value: number; count: number }>();
 
-        holdings.forEach(item => {
+        aggregatedHoldings.forEach(item => {
             const sector = item.sector || 'その他';
             const value = (item.price || 0) * (item.quantity || 0);
 
@@ -106,7 +126,7 @@ export function PortfolioPie({ holdings = [], onUpgradeClick, isSampleMode = fal
         }
 
         return sorted;
-    }, [holdings, hasAccess]);
+    }, [aggregatedHoldings, hasAccess]);
 
     const totalAssets = useMemo(() => data.reduce((sum, item) => sum + item.value, 0), [data]);
 
@@ -114,18 +134,18 @@ export function PortfolioPie({ holdings = [], onUpgradeClick, isSampleMode = fal
     const pieData = useMemo(() => data.filter(d => d.value > 0), [data]);
 
     const selectedOwnedHoldings = useMemo(
-        () => holdings
+        () => aggregatedHoldings
             .filter(item => {
                 const normalizedSector = SECTOR_MASTER_LIST.includes(item.sector) ? item.sector : 'その他';
                 return normalizedSector === ownedSector;
             })
             .sort((a, b) => a.code.localeCompare(b.code, 'ja', { numeric: true })),
-        [holdings, ownedSector]
+        [aggregatedHoldings, ownedSector]
     );
 
     const heldCodes = useMemo(
-        () => new Set(holdings.map(item => String(item.code).trim())),
-        [holdings]
+        () => new Set(aggregatedHoldings.map(item => String(item.code).trim())),
+        [aggregatedHoldings]
     );
 
     const unownedSectorStocks = useMemo(
@@ -200,7 +220,7 @@ export function PortfolioPie({ holdings = [], onUpgradeClick, isSampleMode = fal
             <h3 className="text-xl font-bold text-indigo-900 mb-2 flex items-center gap-2">
                 セクター分析
                 <span className="rounded-full bg-indigo-100 px-2.5 py-1 text-xs font-bold text-indigo-700">
-                    {holdings.length}銘柄
+                    {aggregatedHoldings.length}銘柄
                 </span>
             </h3>
             <p className="text-xs font-mono text-slate-400 mb-6 uppercase tracking-wider">SECTOR ANALYSIS</p>

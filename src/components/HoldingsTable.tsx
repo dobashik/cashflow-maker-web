@@ -1,4 +1,4 @@
-import { TrendingUp, MoreHorizontal, FileDown, RefreshCcw, AlertTriangle, UploadCloud, Trash2, Pencil, ExternalLink, Calendar, Banknote, Lock, Sparkles, History as HistoryIcon, List, GitCompare, Clock3 } from 'lucide-react';
+import { TrendingUp, MoreHorizontal, FileDown, RefreshCcw, AlertTriangle, UploadCloud, Trash2, Pencil, ExternalLink, Calendar, Banknote, Lock, Sparkles, History as HistoryIcon, List, GitCompare, Clock3, FileText, ChevronDown } from 'lucide-react';
 import { HOLDINGS, Holding } from '@/lib/mockData';
 import { motion, AnimatePresence, Variants } from 'framer-motion';
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
@@ -289,6 +289,10 @@ export function HoldingsTable({ isSampleMode = false, onDataUpdate, onUpgradeCli
     const [isHistoryLoading, setIsHistoryLoading] = useState(false);
     const [historyError, setHistoryError] = useState('');
     const [selectedHistory, setSelectedHistory] = useState<PortfolioHistory | null>(null);
+    const uniqueHoldingCount = useMemo(
+        () => new Set(holdings.map(item => String(item.code).trim()).filter(Boolean)).size,
+        [holdings]
+    );
 
     useEffect(() => {
         if (!isSampleMode && sessionStorage.getItem('holdings_import_completed') === 'true') {
@@ -332,7 +336,7 @@ export function HoldingsTable({ isSampleMode = false, onDataUpdate, onUpgradeCli
         if (!selectedHistory) return [];
 
         const pastMap = new Map(aggregatePortfolioByCode(selectedHistory.holdings).map(item => [item.code, item]));
-        const currentMap = new Map(holdings.map(item => [item.code, item]));
+        const currentMap = new Map(aggregatePortfolioByCode(holdings).map(item => [item.code, item]));
         const codes = Array.from(new Set([...pastMap.keys(), ...currentMap.keys()]))
             .sort((a, b) => a.localeCompare(b, 'ja', { numeric: true }));
 
@@ -342,6 +346,25 @@ export function HoldingsTable({ isSampleMode = false, onDataUpdate, onUpgradeCli
             past: pastMap.get(code),
             current: currentMap.get(code),
         }));
+    }, [holdings, selectedHistory]);
+
+    const comparisonSummary = useMemo(() => {
+        const pastCodes = new Set(
+            selectedHistory
+                ? aggregatePortfolioByCode(selectedHistory.holdings).map(item => item.code)
+                : []
+        );
+        const currentCodes = new Set(aggregatePortfolioByCode(holdings).map(item => item.code));
+        const added = Array.from(currentCodes).filter(code => !pastCodes.has(code)).length;
+        const removed = Array.from(pastCodes).filter(code => !currentCodes.has(code)).length;
+
+        return {
+            pastCount: pastCodes.size,
+            currentCount: currentCodes.size,
+            countDiff: currentCodes.size - pastCodes.size,
+            added,
+            removed,
+        };
     }, [holdings, selectedHistory]);
 
     // 5. Animation Variants
@@ -388,9 +411,9 @@ export function HoldingsTable({ isSampleMode = false, onDataUpdate, onUpgradeCli
     const handleDrop = useCallback(async (e: React.DragEvent) => {
         e.preventDefault();
         setIsDragOver(false);
-        const file = e.dataTransfer.files?.[0];
-        if (file && importMode) {
-            await processFile(file, importMode);
+        const files = Array.from(e.dataTransfer.files || []);
+        if (files.length > 0 && importMode) {
+            await processFiles(files, importMode);
         }
     }, [importMode, isAppendMode]);
 
@@ -464,15 +487,14 @@ export function HoldingsTable({ isSampleMode = false, onDataUpdate, onUpgradeCli
     };
 
 
-    const processFile = async (file: File, mode: 'SBI' | 'RAKUTEN' | 'ANALYSIS') => {
+    const processFiles = async (files: File[], mode: 'SBI' | 'RAKUTEN' | 'ANALYSIS') => {
         // 即座にモーダルを閉じてローディング開始
         setImportMode(null);
         setIsLoading(true);
 
         try {
-            const content = await loadCSV(file);
-
             if (mode === 'ANALYSIS') {
+                const content = await loadCSV(files[0]);
                 const analysisData = parseAnalysisCSV(content);
                 console.log("【Import】パース件数:", analysisData.length);
                 if (analysisData.length > 0) {
@@ -497,17 +519,22 @@ export function HoldingsTable({ isSampleMode = false, onDataUpdate, onUpgradeCli
 
             // Normal Holding CSV (SBI/Rakuten)
             let newHoldings: Holding[] = [];
-            if (mode === 'SBI') {
-                newHoldings = parseSBICSV(content);
-            } else if (mode === 'RAKUTEN') {
-                newHoldings = parseRakutenCSV(content);
+            for (const file of files) {
+                const content = await loadCSV(file);
+                const parsed = mode === 'SBI' ? parseSBICSV(content) : parseRakutenCSV(content);
+                newHoldings = [...newHoldings, ...parsed];
             }
 
             console.log("【Import】パース件数:", newHoldings.length);
 
             if (newHoldings.length > 0) {
                 console.log("【Import】先頭データ:", newHoldings[0]);
-                const result = await saveHoldingsToSupabase(newHoldings, mode, isAppendMode);
+                const result = await saveHoldingsToSupabase(
+                    newHoldings,
+                    mode,
+                    isAppendMode,
+                    files.map(file => file.name)
+                );
 
                 if (!result.success) {
                     alert(result.message);
@@ -551,9 +578,9 @@ export function HoldingsTable({ isSampleMode = false, onDataUpdate, onUpgradeCli
     };
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (file && importMode) {
-            processFile(file, importMode);
+        const files = Array.from(e.target.files || []);
+        if (files.length > 0 && importMode) {
+            void processFiles(files, importMode);
         }
     };
 
@@ -625,7 +652,7 @@ export function HoldingsTable({ isSampleMode = false, onDataUpdate, onUpgradeCli
                 <h3 className="text-xl font-bold text-indigo-900 flex items-center gap-2">
                     保有株式リスト
                     <span className="rounded-full bg-indigo-100 px-2.5 py-1 text-xs font-bold text-indigo-700">
-                        {holdings.length}銘柄
+                        {uniqueHoldingCount}銘柄
                     </span>
                 </h3>
 
@@ -634,6 +661,7 @@ export function HoldingsTable({ isSampleMode = false, onDataUpdate, onUpgradeCli
                     ref={fileInputRef}
                     className="hidden"
                     accept=".csv"
+                    multiple={importMode !== 'ANALYSIS'}
                     onChange={handleFileChange}
                 />
 
@@ -708,7 +736,7 @@ export function HoldingsTable({ isSampleMode = false, onDataUpdate, onUpgradeCli
                                 <DialogDescription>
                                     {importMode === 'ANALYSIS' ? '分析データCSV' :
                                         importMode === 'SBI' ? 'SBI証券の保有証券CSV' : '楽天証券の保有商品CSV'}
-                                    をここにドロップしてください。
+                                    をここにドロップしてください。{importMode !== 'ANALYSIS' && '複数ファイルをまとめて選択できます。'}
                                 </DialogDescription>
                             </DialogHeader>
                             <div
@@ -1149,9 +1177,11 @@ export function HoldingsTable({ isSampleMode = false, onDataUpdate, onUpgradeCli
                         </div>
                     ) : (
                         <div className="space-y-3">
-                            {history.map(entry => {
+                            {history.map((entry, index) => {
                                 const sourceLabel = entry.source === 'SBI' ? 'SBI証券' : '楽天証券';
                                 const modeLabel = entry.importMode === 'append' ? '追加' : '入れ替え';
+                                const previousEntry = history[index + 1];
+                                const countDiff = previousEntry ? entry.itemCount - previousEntry.itemCount : null;
 
                                 return (
                                     <div key={entry.id} className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
@@ -1163,11 +1193,32 @@ export function HoldingsTable({ isSampleMode = false, onDataUpdate, onUpgradeCli
                                                     }`}>{sourceLabel}</span>
                                                 <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-500">{modeLabel}</span>
                                                 <span className="font-bold text-slate-800">{entry.itemCount}銘柄</span>
+                                                {countDiff !== null && (
+                                                    <span className={`text-xs font-bold ${countDiff > 0 ? 'text-rose-600' : countDiff < 0 ? 'text-blue-600' : 'text-slate-400'}`}>
+                                                        前回比 {countDiff > 0 ? '+' : ''}{countDiff}
+                                                    </span>
+                                                )}
                                             </div>
                                             <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-xs text-slate-500">
                                                 <span className="flex items-center gap-1"><Clock3 className="h-3.5 w-3.5" />{new Date(entry.createdAt).toLocaleString('ja-JP')}</span>
                                                 <span>評価額 ¥{Math.round(entry.totalValue).toLocaleString()}</span>
                                             </div>
+                                            <details className="group mt-3">
+                                                <summary className="flex w-fit cursor-pointer list-none items-center gap-1 text-xs font-bold text-indigo-600 hover:text-indigo-800">
+                                                    <ChevronDown className="h-3.5 w-3.5 transition-transform group-open:rotate-180" />
+                                                    ファイル {entry.fileNames.length > 0 ? `${entry.fileNames.length}件` : '（記録なし）'}
+                                                </summary>
+                                                <div className="mt-2 flex flex-wrap gap-2">
+                                                    {entry.fileNames.length > 0 ? entry.fileNames.map((fileName, fileIndex) => (
+                                                        <span key={`${fileName}-${fileIndex}`} className="inline-flex max-w-full items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs text-slate-600">
+                                                            <FileText className="h-3.5 w-3.5 flex-none" />
+                                                            <span className="truncate">{fileName}</span>
+                                                        </span>
+                                                    )) : (
+                                                        <span className="text-xs text-slate-400">この履歴はファイル名記録機能の追加前に作成されました。</span>
+                                                    )}
+                                                </div>
+                                            </details>
                                         </div>
                                         <div className="flex flex-shrink-0 gap-2">
                                             <button
@@ -1203,6 +1254,14 @@ export function HoldingsTable({ isSampleMode = false, onDataUpdate, onUpgradeCli
                             {selectedHistory && new Date(selectedHistory.createdAt).toLocaleString('ja-JP')} 時点の履歴です。過去データは編集されません。
                         </DialogDescription>
                     </DialogHeader>
+                    <div className="flex flex-wrap gap-2 text-xs">
+                        <span className="rounded-full bg-slate-100 px-3 py-1.5 font-bold text-slate-600">
+                            銘柄数 {comparisonSummary.pastCount} → {comparisonSummary.currentCount}
+                            （{comparisonSummary.countDiff > 0 ? '+' : ''}{comparisonSummary.countDiff}）
+                        </span>
+                        <span className="rounded-full bg-rose-50 px-3 py-1.5 font-bold text-rose-600">新規 {comparisonSummary.added}</span>
+                        <span className="rounded-full bg-blue-50 px-3 py-1.5 font-bold text-blue-600">保有終了 {comparisonSummary.removed}</span>
+                    </div>
                     <div className="overflow-auto rounded-xl border border-slate-200">
                         <table className="w-full min-w-[850px] text-sm">
                             <thead className="sticky top-0 bg-slate-50 text-xs text-slate-500">

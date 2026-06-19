@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS public.portfolio_history (
     holdings_data JSONB NOT NULL DEFAULT '[]'::jsonb,
     item_count INTEGER NOT NULL DEFAULT 0 CHECK (item_count >= 0),
     total_value NUMERIC NOT NULL DEFAULT 0,
+    file_names TEXT[] NOT NULL DEFAULT '{}',
     created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
 );
 

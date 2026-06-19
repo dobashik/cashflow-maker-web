@@ -93,6 +93,7 @@ export type PortfolioHistory = {
     holdings: Holding[];
     itemCount: number;
     totalValue: number;
+    fileNames: string[];
     createdAt: string;
 };
 
@@ -400,7 +401,8 @@ function aggregateHoldings(items: Holding[]): Holding[] {
 export async function saveHoldingsToSupabase(
     newItems: Holding[],
     currentImportMode: 'SBI' | 'RAKUTEN',
-    isAppendMode: boolean
+    isAppendMode: boolean,
+    fileNames: string[] = []
 ): Promise<{ success: boolean; message: string; userId?: string; historySaved?: boolean }> {
     try {
         const supabase = await createClient();
@@ -552,13 +554,13 @@ export async function saveHoldingsToSupabase(
             updated_at: new Date().toISOString()
         }));
 
-        // Case A: Normal Mode (Not Append) -> 指定ソースの古いデータを削除
+        // Case A: Normal Mode (Not Append) -> ポートフォリオ全体を入れ替える。
+        // 1回目のCSVで全件を初期化し、2回目以降のCSVは追加モードで積み上げる。
         if (!isAppendMode) {
             const { error: deleteError } = await supabase
                 .from('holdings')
                 .delete()
-                .eq('user_id', user.id)
-                .eq('source', targetSource);
+                .eq('user_id', user.id);
 
             if (deleteError) {
                 console.error("Delete Existing Source Error:", deleteError);
@@ -621,8 +623,11 @@ export async function saveHoldingsToSupabase(
                     source: targetSource,
                     import_mode: isAppendMode ? 'append' : 'replace',
                     holdings_data: snapshotHoldings,
-                    item_count: new Set(snapshotHoldings.map(holding => holding.code)).size,
+                    item_count: new Set(
+                        snapshotHoldings.map(holding => String(holding.code).trim()).filter(Boolean)
+                    ).size,
                     total_value: totalValue,
+                    file_names: fileNames,
                 });
 
             if (historyError) {
@@ -661,7 +666,7 @@ export async function getPortfolioHistory(): Promise<{
 
     const { data, error } = await supabase
         .from('portfolio_history')
-        .select('id, source, import_mode, holdings_data, item_count, total_value, created_at')
+        .select('id, source, import_mode, holdings_data, item_count, total_value, file_names, created_at')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false });
 
@@ -679,6 +684,7 @@ export async function getPortfolioHistory(): Promise<{
             holdings: Array.isArray(row.holdings_data) ? row.holdings_data as Holding[] : [],
             itemCount: Number(row.item_count),
             totalValue: Number(row.total_value),
+            fileNames: Array.isArray(row.file_names) ? row.file_names : [],
             createdAt: row.created_at,
         })),
     };
