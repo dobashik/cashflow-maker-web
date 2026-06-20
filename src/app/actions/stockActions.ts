@@ -89,6 +89,7 @@ export type SectorStock = {
 export type PortfolioHistory = {
     id: string;
     source: 'SBI' | 'Rakuten';
+    sources: Array<'SBI' | 'Rakuten'>;
     importMode: 'replace' | 'append';
     holdings: Holding[];
     itemCount: number;
@@ -96,6 +97,8 @@ export type PortfolioHistory = {
     fileNames: string[];
     dataDate: string;
     createdAt: string;
+    updatedAt: string;
+    isOpen: boolean;
 };
 
 /**
@@ -404,8 +407,9 @@ export async function saveHoldingsToSupabase(
     currentImportMode: 'SBI' | 'RAKUTEN',
     isAppendMode: boolean,
     fileNames: string[] = [],
-    dataDate?: string
-): Promise<{ success: boolean; message: string; userId?: string; historySaved?: boolean }> {
+    dataDate?: string,
+    activeHistoryId?: string
+): Promise<{ success: boolean; message: string; userId?: string; historySaved?: boolean; historyId?: string }> {
     try {
         const supabase = await createClient();
         const { data: { user } } = await supabase.auth.getUser();
@@ -416,6 +420,37 @@ export async function saveHoldingsToSupabase(
 
         // 0. ソースの厳格な特定
         const targetSource = currentImportMode === 'SBI' ? 'SBI' : 'Rakuten';
+
+        type ActiveHistoryRow = {
+            id: string;
+            holdings_data: Holding[];
+            file_names: string[];
+            sources: string[];
+            source: 'SBI' | 'Rakuten';
+            data_date: string;
+            is_open: boolean;
+        };
+        let activeHistory: ActiveHistoryRow | null = null;
+
+        if (isAppendMode) {
+            if (!activeHistoryId) {
+                return { success: false, message: '追加先の更新履歴が見つかりません。新しい更新として取り込んでください。' };
+            }
+
+            const { data: historyRow, error: activeHistoryError } = await supabase
+                .from('portfolio_history')
+                .select('id, holdings_data, file_names, sources, source, data_date, is_open')
+                .eq('id', activeHistoryId)
+                .eq('user_id', user.id)
+                .eq('is_open', true)
+                .maybeSingle();
+
+            if (activeHistoryError || !historyRow) {
+                return { success: false, message: '追加先の更新履歴を確認できません。新しい更新として取り込んでください。' };
+            }
+
+            activeHistory = historyRow as ActiveHistoryRow;
+        }
 
         let combinedItems: Holding[] = [...newItems];
 
@@ -585,34 +620,88 @@ export async function saveHoldingsToSupabase(
         // 履歴にはDB全体ではなく、この操作で選択されたCSVの内容だけを固定保存する。
         // 後続のインポートで現在のポートフォリオが変わっても、この配列は変化しない。
         let historySaved = false;
+        let savedHistoryId: string | undefined;
         const importedHoldings = newItems.map(item => ({
             ...item,
             code: String(item.code).trim(),
         }));
-        const importedTotalValue = importedHoldings.reduce(
+        const historyHoldings = activeHistory
+            ? aggregateHoldings([
+                ...(Array.isArray(activeHistory.holdings_data) ? activeHistory.holdings_data : []),
+                ...importedHoldings,
+            ])
+            : importedHoldings;
+        const historyTotalValue = historyHoldings.reduce(
             (sum, holding) => sum + holding.price * holding.quantity,
             0
         );
 
-        const { error: historyError } = await supabase
-            .from('portfolio_history')
-            .insert({
-                user_id: user.id,
-                source: targetSource,
-                import_mode: isAppendMode ? 'append' : 'replace',
-                holdings_data: importedHoldings,
-                item_count: new Set(
-                    importedHoldings.map(holding => holding.code).filter(Boolean)
-                ).size,
-                total_value: importedTotalValue,
-                file_names: fileNames,
-                data_date: dataDate || new Date().toISOString(),
-            });
+        const mergedFileNames = activeHistory
+            ? [...(activeHistory.file_names || []), ...fileNames]
+            : fileNames;
+        const mergedSources = Array.from(new Set([
+            ...(activeHistory?.sources?.length ? activeHistory.sources : activeHistory ? [activeHistory.source] : []),
+            targetSource,
+        ]));
+        const incomingDataDate = dataDate || new Date().toISOString();
+        const mergedDataDate = activeHistory && new Date(activeHistory.data_date) > new Date(incomingDataDate)
+            ? activeHistory.data_date
+            : incomingDataDate;
+        const historyPayload = {
+            holdings_data: historyHoldings,
+            item_count: new Set(historyHoldings.map(holding => String(holding.code).trim()).filter(Boolean)).size,
+            total_value: historyTotalValue,
+            file_names: mergedFileNames,
+            sources: mergedSources,
+            data_date: mergedDataDate,
+            updated_at: new Date().toISOString(),
+        };
 
-        if (historyError) {
-            console.error('Portfolio History Insert Error:', historyError);
+        if (activeHistory) {
+            const { data: updatedHistory, error: historyError } = await supabase
+                .from('portfolio_history')
+                .update(historyPayload)
+                .eq('id', activeHistory.id)
+                .eq('user_id', user.id)
+                .select('id')
+                .single();
+
+            if (historyError) {
+                console.error('Portfolio History Update Error:', historyError);
+            } else {
+                historySaved = true;
+                savedHistoryId = updatedHistory.id;
+            }
         } else {
-            historySaved = true;
+            const { error: closeHistoryError } = await supabase
+                .from('portfolio_history')
+                .update({ is_open: false, updated_at: new Date().toISOString() })
+                .eq('user_id', user.id)
+                .eq('is_open', true);
+
+            if (closeHistoryError) {
+                console.error('Portfolio History Close Error:', closeHistoryError);
+                return { success: false, message: '以前の更新履歴を確定できませんでした' };
+            }
+
+            const { data: insertedHistory, error: historyError } = await supabase
+                .from('portfolio_history')
+                .insert({
+                    user_id: user.id,
+                    source: targetSource,
+                    import_mode: 'replace',
+                    is_open: true,
+                    ...historyPayload,
+                })
+                .select('id')
+                .single();
+
+            if (historyError) {
+                console.error('Portfolio History Insert Error:', historyError);
+            } else {
+                historySaved = true;
+                savedHistoryId = insertedHistory.id;
+            }
         }
 
         return {
@@ -622,6 +711,7 @@ export async function saveHoldingsToSupabase(
                 : 'データを保存しました（履歴テーブルの設定後、履歴保存が有効になります）',
             userId: user.id,
             historySaved,
+            historyId: savedHistoryId,
         };
 
     } catch (error) {
@@ -644,7 +734,7 @@ export async function getPortfolioHistory(): Promise<{
 
     const { data, error } = await supabase
         .from('portfolio_history')
-        .select('id, source, import_mode, holdings_data, item_count, total_value, file_names, data_date, created_at')
+        .select('id, source, sources, import_mode, holdings_data, item_count, total_value, file_names, data_date, created_at, updated_at, is_open')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false });
 
@@ -658,6 +748,9 @@ export async function getPortfolioHistory(): Promise<{
         history: (data || []).map(row => ({
             id: row.id,
             source: row.source as 'SBI' | 'Rakuten',
+            sources: Array.isArray(row.sources) && row.sources.length > 0
+                ? row.sources as Array<'SBI' | 'Rakuten'>
+                : [row.source as 'SBI' | 'Rakuten'],
             importMode: row.import_mode as 'replace' | 'append',
             holdings: Array.isArray(row.holdings_data) ? row.holdings_data as Holding[] : [],
             itemCount: Number(row.item_count),
@@ -665,6 +758,8 @@ export async function getPortfolioHistory(): Promise<{
             fileNames: Array.isArray(row.file_names) ? row.file_names : [],
             dataDate: row.data_date || row.created_at,
             createdAt: row.created_at,
+            updatedAt: row.updated_at || row.created_at,
+            isOpen: Boolean(row.is_open),
         })),
     };
 }
@@ -716,6 +811,17 @@ export async function deleteAllHoldings(): Promise<{ success: boolean; message: 
             return { success: false, message: "削除に失敗しました" };
         }
 
+        const { error: closeHistoryError } = await supabase
+            .from('portfolio_history')
+            .update({ is_open: false, updated_at: new Date().toISOString() })
+            .eq('user_id', user.id)
+            .eq('is_open', true);
+
+        if (closeHistoryError) {
+            console.error('Close History Error:', closeHistoryError);
+            return { success: false, message: '保有データは削除しましたが、更新履歴の確定に失敗しました' };
+        }
+
         return { success: true, message: "全てのデータを削除しました" };
     } catch (error) {
         console.error("deleteAllHoldings error:", error);
@@ -744,6 +850,17 @@ export async function deleteHoldingsBySource(source: 'SBI' | 'Rakuten'): Promise
         if (error) {
             console.error("Delete By Source Error:", error);
             return { success: false, message: `${source}のデータ削除に失敗しました` };
+        }
+
+        const { error: closeHistoryError } = await supabase
+            .from('portfolio_history')
+            .update({ is_open: false, updated_at: new Date().toISOString() })
+            .eq('user_id', user.id)
+            .eq('is_open', true);
+
+        if (closeHistoryError) {
+            console.error('Close History Error:', closeHistoryError);
+            return { success: false, message: `${source}のデータは削除しましたが、更新履歴の確定に失敗しました` };
         }
 
         const sourceLabel = source === 'SBI' ? 'SBI証券' : '楽天証券';

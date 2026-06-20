@@ -312,6 +312,7 @@ export function HoldingsTable({ isSampleMode = false, onDataUpdate, onUpgradeCli
     const [isUpdating, setIsUpdating] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
     const [isAppendMode, setIsAppendMode] = useState(false);
+    const [activeHistoryId, setActiveHistoryId] = useState<string | null>(null);
     const [activeTab, setActiveTab] = useState<'current' | 'history'>('current');
     const [history, setHistory] = useState<PortfolioHistory[]>([]);
     const [isHistoryLoading, setIsHistoryLoading] = useState(false);
@@ -323,10 +324,19 @@ export function HoldingsTable({ isSampleMode = false, onDataUpdate, onUpgradeCli
     );
 
     useEffect(() => {
-        if (!isSampleMode && sessionStorage.getItem('holdings_import_completed') === 'true') {
+        const storedHistoryId = sessionStorage.getItem('active_portfolio_history_id');
+        if (!isSampleMode && storedHistoryId && sessionStorage.getItem('holdings_import_completed') === 'true') {
+            setActiveHistoryId(storedHistoryId);
             setIsAppendMode(true);
         }
     }, [isSampleMode]);
+
+    const clearActiveImportSession = useCallback(() => {
+        setActiveHistoryId(null);
+        setIsAppendMode(false);
+        sessionStorage.removeItem('active_portfolio_history_id');
+        sessionStorage.removeItem('holdings_import_completed');
+    }, []);
 
     // Edit Modal State
     const [editingStock, setEditingStock] = useState<Holding | null>(null);
@@ -343,6 +353,18 @@ export function HoldingsTable({ isSampleMode = false, onDataUpdate, onUpgradeCli
             const result = await getPortfolioHistory();
             if (result.success) {
                 setHistory(result.history);
+                const openHistory = result.history.find(entry => entry.isOpen);
+                if (openHistory) {
+                    const storedHistoryId = sessionStorage.getItem('active_portfolio_history_id');
+                    setActiveHistoryId(openHistory.id);
+                    if (storedHistoryId !== openHistory.id) {
+                        setIsAppendMode(false);
+                        sessionStorage.removeItem('holdings_import_completed');
+                        sessionStorage.removeItem('active_portfolio_history_id');
+                    }
+                } else {
+                    clearActiveImportSession();
+                }
             } else {
                 setHistoryError(result.message || '履歴の取得に失敗しました');
             }
@@ -352,13 +374,11 @@ export function HoldingsTable({ isSampleMode = false, onDataUpdate, onUpgradeCli
         } finally {
             setIsHistoryLoading(false);
         }
-    }, [isSampleMode]);
+    }, [clearActiveImportSession, isSampleMode]);
 
     useEffect(() => {
-        if (activeTab === 'history') {
-            void loadHistory();
-        }
-    }, [activeTab, loadHistory]);
+        void loadHistory();
+    }, [loadHistory]);
 
     const previousHistory = useMemo(() => {
         if (!selectedHistory) return null;
@@ -488,6 +508,7 @@ export function HoldingsTable({ isSampleMode = false, onDataUpdate, onUpgradeCli
             const result = await deleteAllHoldings();
             alert(result.message);
             if (result.success) {
+                clearActiveImportSession();
                 await fetchHoldings();
             }
         } catch (error) {
@@ -508,6 +529,7 @@ export function HoldingsTable({ isSampleMode = false, onDataUpdate, onUpgradeCli
             const result = await deleteHoldingsBySource(source);
             alert(result.message);
             if (result.success) {
+                clearActiveImportSession();
                 await fetchHoldings();
             }
         } catch (error) {
@@ -566,7 +588,8 @@ export function HoldingsTable({ isSampleMode = false, onDataUpdate, onUpgradeCli
                     mode,
                     isAppendMode,
                     files.map(file => file.name),
-                    getHistoryDataDate(files.map(file => file.name))
+                    getHistoryDataDate(files.map(file => file.name)),
+                    isAppendMode ? activeHistoryId || undefined : undefined
                 );
 
                 if (!result.success) {
@@ -576,6 +599,10 @@ export function HoldingsTable({ isSampleMode = false, onDataUpdate, onUpgradeCli
                 // 同じ画面内で次のCSVを取り込む場合は、前回データを残す設定に切り替える。
                 setIsAppendMode(true);
                 sessionStorage.setItem('holdings_import_completed', 'true');
+                if (result.historyId) {
+                    setActiveHistoryId(result.historyId);
+                    sessionStorage.setItem('active_portfolio_history_id', result.historyId);
+                }
                 void loadHistory();
                 const userId = result.userId;
 
@@ -658,6 +685,9 @@ export function HoldingsTable({ isSampleMode = false, onDataUpdate, onUpgradeCli
             if (selectedHistory?.id === entry.id) {
                 setSelectedHistory(null);
             }
+            if (activeHistoryId === entry.id) {
+                clearActiveImportSession();
+            }
             await loadHistory();
         } finally {
             setIsHistoryLoading(false);
@@ -723,13 +753,13 @@ export function HoldingsTable({ isSampleMode = false, onDataUpdate, onUpgradeCli
                                 className="flex items-center gap-2 p-2 hover:bg-indigo-50 rounded-lg cursor-pointer text-slate-600 hover:text-indigo-900"
                                 onClick={() => handleImportClick('SBI')}
                             >
-                                <FileDown className="w-4 h-4" /> SBI証券 CSVインポート
+                                <FileDown className="w-4 h-4" /> SBI証券 CSVを取り込む
                             </DropdownMenuItem>
                             <DropdownMenuItem
                                 className="flex items-center gap-2 p-2 hover:bg-indigo-50 rounded-lg cursor-pointer text-slate-600 hover:text-indigo-900"
                                 onClick={() => handleImportClick('RAKUTEN')}
                             >
-                                <FileDown className="w-4 h-4" /> 楽天証券 CSVインポート
+                                <FileDown className="w-4 h-4" /> 楽天証券 CSVを取り込む
                             </DropdownMenuItem>
                             <DropdownMenuItem
                                 className="flex items-center gap-2 p-2 hover:bg-indigo-50 rounded-lg cursor-pointer text-slate-600 hover:text-indigo-900"
@@ -796,6 +826,7 @@ export function HoldingsTable({ isSampleMode = false, onDataUpdate, onUpgradeCli
                                     type="checkbox"
                                     id="appendMode"
                                     checked={isAppendMode}
+                                    disabled={!activeHistoryId}
                                     onChange={(e) => setIsAppendMode(e.target.checked)}
                                     className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600"
                                 />
@@ -803,9 +834,18 @@ export function HoldingsTable({ isSampleMode = false, onDataUpdate, onUpgradeCli
                                     htmlFor="appendMode"
                                     className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 text-slate-700 select-none cursor-pointer"
                                 >
-                                    既存のリストに追加する（前のデータを消さない）
+                                    この更新にCSVを追加する（同じ履歴にまとめる）
                                 </label>
                             </div>
+                            {importMode !== 'ANALYSIS' && (
+                                <p className="text-center text-xs text-slate-400">
+                                    {activeHistoryId
+                                        ? isAppendMode
+                                            ? '追加したCSVは、直前に開始した更新履歴へ統合されます。'
+                                            : 'チェックを外すと、新しい履歴を開始して現在の保有データを入れ替えます。'
+                                        : '最初のCSVは新しい更新履歴として保存されます。'}
+                                </p>
+                            )}
                         </DialogContent>
                     </Dialog>
 
@@ -1211,8 +1251,10 @@ export function HoldingsTable({ isSampleMode = false, onDataUpdate, onUpgradeCli
                     ) : (
                         <div className="space-y-3">
                             {history.map((entry, index) => {
-                                const sourceLabel = entry.source === 'SBI' ? 'SBI証券' : '楽天証券';
-                                const modeLabel = entry.importMode === 'append' ? '追加' : '入れ替え';
+                                const sourceLabel = entry.sources
+                                    .map(source => source === 'SBI' ? 'SBI証券' : '楽天証券')
+                                    .join('・');
+                                const modeLabel = '更新';
                                 const previousEntry = history[index + 1];
                                 const countDiff = previousEntry ? entry.itemCount - previousEntry.itemCount : null;
 
@@ -1225,6 +1267,9 @@ export function HoldingsTable({ isSampleMode = false, onDataUpdate, onUpgradeCli
                                                     : 'bg-rose-100 text-rose-700'
                                                     }`}>{sourceLabel}</span>
                                                 <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-500">{modeLabel}</span>
+                                                {entry.isOpen && (
+                                                    <span className="rounded-full bg-emerald-100 px-2 py-1 text-[10px] font-bold text-emerald-700">追加受付中</span>
+                                                )}
                                                 <span className="font-bold text-slate-800">{entry.itemCount}銘柄</span>
                                                 {countDiff !== null && (
                                                     <span className={`text-xs font-bold ${countDiff > 0 ? 'text-rose-600' : countDiff < 0 ? 'text-blue-600' : 'text-slate-400'}`}>
@@ -1235,6 +1280,7 @@ export function HoldingsTable({ isSampleMode = false, onDataUpdate, onUpgradeCli
                                             <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-xs text-slate-500">
                                                 <span className="flex items-center gap-1"><Clock3 className="h-3.5 w-3.5" />CSV基準 {new Date(entry.dataDate).toLocaleString('ja-JP')}</span>
                                                 <span>取込 {new Date(entry.createdAt).toLocaleString('ja-JP')}</span>
+                                                {entry.updatedAt !== entry.createdAt && <span>最終追加 {new Date(entry.updatedAt).toLocaleString('ja-JP')}</span>}
                                                 <span>評価額 ¥{Math.round(entry.totalValue).toLocaleString()}</span>
                                             </div>
                                             <details className="group mt-3">

@@ -3,13 +3,16 @@ CREATE TABLE IF NOT EXISTS public.portfolio_history (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
     source TEXT NOT NULL CHECK (source IN ('SBI', 'Rakuten')),
+    sources TEXT[] NOT NULL DEFAULT '{}',
     import_mode TEXT NOT NULL CHECK (import_mode IN ('replace', 'append')),
     holdings_data JSONB NOT NULL DEFAULT '[]'::jsonb,
     item_count INTEGER NOT NULL DEFAULT 0 CHECK (item_count >= 0),
     total_value NUMERIC NOT NULL DEFAULT 0,
     file_names TEXT[] NOT NULL DEFAULT '{}',
     data_date TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
-    created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
+    created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
+    is_open BOOLEAN NOT NULL DEFAULT false
 );
 
 COMMENT ON TABLE public.portfolio_history IS 'CSV import snapshots for comparing past and current portfolios';
@@ -17,6 +20,10 @@ COMMENT ON COLUMN public.portfolio_history.holdings_data IS 'Complete portfolio 
 
 CREATE INDEX IF NOT EXISTS portfolio_history_user_created_idx
     ON public.portfolio_history (user_id, created_at DESC);
+
+CREATE UNIQUE INDEX IF NOT EXISTS portfolio_history_one_open_per_user_idx
+    ON public.portfolio_history (user_id)
+    WHERE is_open;
 
 ALTER TABLE public.portfolio_history ENABLE ROW LEVEL SECURITY;
 
@@ -37,3 +44,10 @@ CREATE POLICY "Users can delete own portfolio history"
     ON public.portfolio_history FOR DELETE
     TO authenticated
     USING (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Users can update own portfolio history" ON public.portfolio_history;
+CREATE POLICY "Users can update own portfolio history"
+    ON public.portfolio_history FOR UPDATE
+    TO authenticated
+    USING (auth.uid() = user_id)
+    WITH CHECK (auth.uid() = user_id);
