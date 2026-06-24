@@ -77,7 +77,19 @@ export const loadCSV = async (file: File): Promise<string> => {
                 const contentUTF8 = decoderUTF8.decode(buffer);
 
                 // Keywords to identify valid content (SBI, Rakuten, or Analysis data)
-                const keywords = ["ランク", "総合スコア", "保有数量", "国内株式", "口座", "銘柄コード", "取得単価", "現在値"];
+                const keywords = [
+                    "ランク",
+                    "総合スコア",
+                    "保有数量",
+                    "国内株式",
+                    "口座",
+                    "銘柄コード",
+                    "取得単価",
+                    "現在値",
+                    "円貨入出金明細",
+                    "入出金日",
+                    "利金・配当金",
+                ];
                 const hasUtf8Keywords = keywords.some(k => contentUTF8.includes(k));
 
                 console.log("【CSV判定】UTF-8キーワード検知:", hasUtf8Keywords);
@@ -103,6 +115,119 @@ export const loadCSV = async (file: File): Promise<string> => {
         // Read as ArrayBuffer to allow manual decoding
         reader.readAsArrayBuffer(file);
     });
+};
+
+export type ImportedDividendPayment = {
+    broker: 'SBI';
+    paymentDate: string;
+    stockName: string;
+    amount: number;
+    taxCategory: 'NISA' | 'Taxable' | 'Unknown';
+    sourceFingerprint: string;
+};
+
+const normalizeText = (value: string): string => value
+    .replace(/\uFEFF/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+const normalizeDividendStockName = (description: string): string => normalizeText(description)
+    .replace(/^株式配当金/g, '')
+    .replace(/（NISA：非課税）/g, '')
+    .replace(/\(NISA：非課税\)/g, '')
+    .trim();
+
+const createDividendFingerprint = (payment: Omit<ImportedDividendPayment, 'sourceFingerprint'>, description: string): string => [
+    payment.broker,
+    payment.paymentDate,
+    payment.stockName,
+    payment.amount,
+    payment.taxCategory,
+    normalizeText(description),
+].join('|');
+
+/**
+ * Parse SBI deposit/withdrawal detail CSV and extract dividend payments only.
+ *
+ * 対象:
+ * - 取引 = 入金
+ * - 区分 = 利金・配当金
+ *
+ * 除外:
+ * - ポイント、その他、クレカ・引落、出金
+ */
+export const parseSBIDividendPaymentCSV = (csvContent: string): ImportedDividendPayment[] => {
+    const lines = csvContent.split(/\r?\n/);
+    const payments: ImportedDividendPayment[] = [];
+
+    let headerIndex = -1;
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        if (line.includes('入出金日') && line.includes('取引') && line.includes('区分') && line.includes('入金額')) {
+            headerIndex = i;
+            break;
+        }
+    }
+
+    if (headerIndex === -1) {
+        console.error("SBI dividend payment CSV header not found");
+        return [];
+    }
+
+    const headers = parseCSVLine(lines[headerIndex]);
+    const getIndex = (keys: string[]) => headers.findIndex(h => keys.some(k => h === k || h.includes(k)));
+
+    const colIndices = {
+        paymentDate: getIndex(['入出金日']),
+        transaction: getIndex(['取引']),
+        category: getIndex(['区分']),
+        description: getIndex(['摘要', '銘柄名']),
+        depositAmount: getIndex(['入金額']),
+    };
+
+    if (Object.values(colIndices).some(index => index < 0)) {
+        console.error("SBI dividend payment CSV required columns not found", colIndices);
+        return [];
+    }
+
+    for (let i = headerIndex + 1; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line) continue;
+
+        const cells = parseCSVLine(line);
+        const transaction = normalizeText(cells[colIndices.transaction] || '');
+        const category = normalizeText(cells[colIndices.category] || '');
+
+        if (transaction !== '入金') continue;
+        if (category !== '利金・配当金') continue;
+
+        const rawDate = normalizeText(cells[colIndices.paymentDate] || '');
+        const description = normalizeText(cells[colIndices.description] || '');
+        const amount = parseNumber(cells[colIndices.depositAmount]);
+        const stockName = normalizeDividendStockName(description);
+
+        if (!rawDate || !stockName || amount <= 0) continue;
+
+        const dateParts = rawDate.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})$/);
+        if (!dateParts) continue;
+        const [, year, month, day] = dateParts;
+        const paymentDate = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+
+        const paymentWithoutFingerprint = {
+            broker: 'SBI' as const,
+            paymentDate,
+            stockName,
+            amount,
+            taxCategory: description.includes('NISA') ? 'NISA' as const : 'Taxable' as const,
+        };
+
+        payments.push({
+            ...paymentWithoutFingerprint,
+            sourceFingerprint: createDividendFingerprint(paymentWithoutFingerprint, description),
+        });
+    }
+
+    return payments;
 };
 
 /**

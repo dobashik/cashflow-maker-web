@@ -6,8 +6,25 @@ import { useState, useEffect } from 'react';
 import { checkPremiumAccess } from '@/app/actions/subscriptionActions';
 import { Lock, Sparkles } from 'lucide-react';
 
-export function DividendCalendar({ onUpgradeClick, isSampleMode = false }: { onUpgradeClick?: () => void, isSampleMode?: boolean }) {
-    const maxAmount = Math.max(...MONTHLY_DIVIDENDS_DATA.map(d => d.amount)) * 1.1; // Add buffer
+type MonthlyDividend = {
+    month: string;
+    amount: number;
+};
+
+export function DividendCalendar({
+    onUpgradeClick,
+    isSampleMode = false,
+    monthlyData,
+}: {
+    onUpgradeClick?: () => void,
+    isSampleMode?: boolean,
+    monthlyData?: MonthlyDividend[],
+}) {
+    const displayData = monthlyData && monthlyData.some(item => item.amount > 0)
+        ? monthlyData
+        : MONTHLY_DIVIDENDS_DATA;
+    const isActualData = Boolean(monthlyData && monthlyData.some(item => item.amount > 0));
+    const maxAmount = Math.max(...displayData.map(d => d.amount), 1) * 1.1; // Add buffer
 
     const [hasAccess, setHasAccess] = useState(true);
     const currentMonth = new Date().getMonth() + 1; // 1-12
@@ -53,8 +70,16 @@ export function DividendCalendar({ onUpgradeClick, isSampleMode = false }: { onU
         <div className="bg-white rounded-2xl p-6 shadow-sm border border-indigo-50 w-full">
             <h3 className="text-xl font-bold text-indigo-900 mb-2 flex items-center gap-2">
                 月別配当カレンダー
+                {isActualData && (
+                    <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-bold text-emerald-700">
+                        実績
+                    </span>
+                )}
             </h3>
-            <p className="text-xs font-mono text-slate-400 mb-8 uppercase tracking-widest">MONTHLY DIVIDENDS</p>
+            <p className="text-xs font-mono text-slate-400 mb-2 uppercase tracking-widest">MONTHLY DIVIDENDS</p>
+            <p className="mb-8 text-xs text-slate-400">
+                {isActualData ? 'SBI入出金明細から取り込んだ今年の配当実績です。' : '配当金履歴を取り込むと、実績ベースの月別配当が表示されます。'}
+            </p>
 
             <motion.div
                 className="w-full h-[250px] flex items-end justify-between gap-2 md:gap-4 px-2"
@@ -63,7 +88,7 @@ export function DividendCalendar({ onUpgradeClick, isSampleMode = false }: { onU
                 whileInView="show"
                 viewport={{ once: true, amount: 0.2 }}
             >
-                {MONTHLY_DIVIDENDS_DATA.map((item, index) => {
+                {displayData.map((item, index) => {
                     const heightPercent = (item.amount / maxAmount) * 100;
                     // ロック条件: アクセス権がなく、かつ今月でない場合
                     const isLocked = !hasAccess && item.month !== `${currentMonth}月`;

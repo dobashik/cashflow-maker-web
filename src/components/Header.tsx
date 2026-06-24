@@ -136,6 +136,13 @@ export function Header({ onRefreshAnimations }: HeaderProps) {
                             セクター分析
                         </a>
                         <a
+                            href="#dividend-history"
+                            onClick={(e) => handleClick(e, 'dividend-history')}
+                            className="text-sm font-medium text-slate-500 hover:text-indigo-600 transition-colors"
+                        >
+                            配当金履歴
+                        </a>
+                        <a
                             href="#dividend-calendar"
                             onClick={(e) => handleClick(e, 'dividend-calendar')}
                             className="text-sm font-medium text-slate-500 hover:text-indigo-600 transition-colors"

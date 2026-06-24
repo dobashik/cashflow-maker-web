@@ -7,6 +7,7 @@ import { DividendGame } from '@/components/DividendGame';
 import { PortfolioPie } from '@/components/PortfolioPie';
 import { HoldingsTable } from '@/components/HoldingsTable';
 import { DividendCalendar } from '@/components/DividendCalendar';
+import { DividendHistory } from '@/components/DividendHistory';
 import { BetaNoticeBanner } from '@/components/BetaNoticeBanner';
 import { Footer } from '@/components/Footer';
 
@@ -14,6 +15,7 @@ import { Holding } from '@/lib/mockData';
 
 export function DashboardContent({ animationKey = 0, isSampleMode = false }: { animationKey?: number, isSampleMode?: boolean }) {
     const [sharedHoldings, setSharedHoldings] = useState<Holding[]>([]);
+    const [actualMonthlyDividends, setActualMonthlyDividends] = useState<{ month: string; amount: number }[]>([]);
 
     return (
         <div className="container mx-auto px-4 space-y-8">
@@ -60,7 +62,23 @@ export function DashboardContent({ animationKey = 0, isSampleMode = false }: { a
                 </motion.div>
             </section>
 
-            {/* 4. 月別配当カレンダー (Dividend Calendar) */}
+            {/* 4. 配当金履歴 (Actual Dividend Payments) */}
+            <section id="dividend-history" className="w-full scroll-mt-32">
+                <motion.div
+                    key={`dividend-history-${animationKey}`}
+                    initial={{ opacity: 0 }}
+                    whileInView={{ opacity: 1 }}
+                    viewport={{ margin: "-50px" }}
+                    transition={{ duration: 0.5 }}
+                >
+                    <DividendHistory
+                        isSampleMode={isSampleMode}
+                        onMonthlyDataUpdate={setActualMonthlyDividends}
+                    />
+                </motion.div>
+            </section>
+
+            {/* 5. 月別配当カレンダー (Dividend Calendar) */}
             <section id="dividend-calendar" className="w-full scroll-mt-32">
                 <motion.div
                     key={`calendar-${animationKey}`}
@@ -71,6 +89,7 @@ export function DashboardContent({ animationKey = 0, isSampleMode = false }: { a
                 >
                     <DividendCalendar
                         isSampleMode={isSampleMode}
+                        monthlyData={actualMonthlyDividends}
                     />
                 </motion.div>
             </section>
