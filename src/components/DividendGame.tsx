@@ -4,8 +4,9 @@ import { motion, useSpring, useTransform, useInView } from 'framer-motion';
 import { Droplets, Plus, Save, Sparkles, Trash2 } from 'lucide-react';
 import { cn } from './ui/Button';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { DEFAULT_EXPENSE_ITEMS, getExpenseItems, saveExpenseItems } from '@/app/actions/expenseActions';
-import type { ExpenseItem } from '@/app/actions/expenseActions';
+import { getExpenseItems, saveExpenseItems } from '@/app/actions/expenseActions';
+import { DEFAULT_EXPENSE_ITEMS } from '@/lib/expenseData';
+import type { ExpenseItem } from '@/lib/expenseData';
 
 type DividendGameProps = {
     annualDividendAmount?: number;
