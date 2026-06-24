@@ -19,6 +19,7 @@ type MonthlyDividend = {
 type DividendHistoryProps = {
     isSampleMode?: boolean;
     onMonthlyDataUpdate?: (data: MonthlyDividend[]) => void;
+    onAnnualDataUpdate?: (annualAmount: number, year: number) => void;
 };
 
 const emptySummary: DividendSummary = {
@@ -28,6 +29,8 @@ const emptySummary: DividendSummary = {
     processedCount: 0,
     unprocessedCount: 0,
     monthlyTotals: Array.from({ length: 12 }, (_, index) => ({ month: index + 1, amount: 0 })),
+    year: new Date().getFullYear(),
+    availableYears: [new Date().getFullYear()],
 };
 
 const emptyDashboardData: DividendDashboardData = {
@@ -44,7 +47,7 @@ const taxLabel = (taxCategory: DividendPayment['taxCategory']) => {
     return '不明';
 };
 
-export function DividendHistory({ isSampleMode = false, onMonthlyDataUpdate }: DividendHistoryProps) {
+export function DividendHistory({ isSampleMode = false, onMonthlyDataUpdate, onAnnualDataUpdate }: DividendHistoryProps) {
     const fileInputRef = useRef<HTMLInputElement | null>(null);
     const [dashboardData, setDashboardData] = useState<DividendDashboardData>(emptyDashboardData);
     const [isLoading, setIsLoading] = useState(false);
@@ -52,13 +55,14 @@ export function DividendHistory({ isSampleMode = false, onMonthlyDataUpdate }: D
     const [error, setError] = useState('');
     const [message, setMessage] = useState('');
     const [showProcessed, setShowProcessed] = useState(true);
+    const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
 
-    const loadData = useCallback(async () => {
+    const loadData = useCallback(async (year = selectedYear) => {
         if (isSampleMode) return;
 
         setIsLoading(true);
         setError('');
-        const result = await getDividendDashboardData();
+        const result = await getDividendDashboardData(year);
 
         if (result.success) {
             setDashboardData(result.data);
@@ -68,7 +72,7 @@ export function DividendHistory({ isSampleMode = false, onMonthlyDataUpdate }: D
         }
 
         setIsLoading(false);
-    }, [isSampleMode]);
+    }, [isSampleMode, selectedYear]);
 
     useEffect(() => {
         void loadData();
@@ -82,6 +86,12 @@ export function DividendHistory({ isSampleMode = false, onMonthlyDataUpdate }: D
         }));
         onMonthlyDataUpdate(monthlyData);
     }, [dashboardData.summary.monthlyTotals, onMonthlyDataUpdate]);
+
+    useEffect(() => {
+        if (!onAnnualDataUpdate) return;
+        const annualAmount = dashboardData.summary.monthlyTotals.reduce((sum, item) => sum + item.amount, 0);
+        onAnnualDataUpdate(annualAmount, dashboardData.summary.year);
+    }, [dashboardData.summary.monthlyTotals, dashboardData.summary.year, onAnnualDataUpdate]);
 
     const visiblePayments = useMemo(
         () => dashboardData.payments.filter(payment => showProcessed || !payment.isProcessed),
@@ -106,7 +116,7 @@ export function DividendHistory({ isSampleMode = false, onMonthlyDataUpdate }: D
                 setError(result.message);
             } else {
                 setMessage(result.message);
-                await loadData();
+                await loadData(selectedYear);
             }
         } catch (importError) {
             console.error('Dividend CSV Import Error:', importError);
@@ -129,13 +139,13 @@ export function DividendHistory({ isSampleMode = false, onMonthlyDataUpdate }: D
                     processedAt: nextProcessed ? new Date().toISOString() : null,
                 }
                 : item);
-            return { ...prev, payments, summary: buildClientSummary(payments) };
+            return { ...prev, payments, summary: buildClientSummary(payments, selectedYear) };
         });
 
         const result = await updateDividendPaymentProcessed(payment.id, nextProcessed);
         if (!result.success) {
             setError(result.message);
-            await loadData();
+            await loadData(selectedYear);
         }
     };
 
@@ -151,7 +161,12 @@ export function DividendHistory({ isSampleMode = false, onMonthlyDataUpdate }: D
             return;
         }
         setMessage(result.message);
-        await loadData();
+        await loadData(selectedYear);
+    };
+
+    const handleYearChange = (year: number) => {
+        setSelectedYear(year);
+        void loadData(year);
     };
 
     if (isSampleMode) return null;
@@ -169,9 +184,18 @@ export function DividendHistory({ isSampleMode = false, onMonthlyDataUpdate }: D
                     <p className="text-xs font-mono text-slate-400 uppercase tracking-wider">ACTUAL DIVIDEND PAYMENTS</p>
                 </div>
                 <div className="flex flex-wrap gap-2">
+                    <select
+                        value={selectedYear}
+                        onChange={(event) => handleYearChange(Number(event.target.value))}
+                        className="rounded-lg border border-indigo-100 bg-indigo-50 px-3 py-2 text-sm font-bold text-indigo-700 outline-none focus:ring-2 focus:ring-indigo-200"
+                    >
+                        {dashboardData.summary.availableYears.map(year => (
+                            <option key={year} value={year}>{year}年</option>
+                        ))}
+                    </select>
                     <button
                         type="button"
-                        onClick={() => void loadData()}
+                        onClick={() => void loadData(selectedYear)}
                         disabled={isLoading || isImporting}
                         className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
                     >
@@ -208,7 +232,7 @@ export function DividendHistory({ isSampleMode = false, onMonthlyDataUpdate }: D
             )}
 
             <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-3">
-                <SummaryCard label="実績配当合計" value={formatYen(dashboardData.summary.totalAmount)} />
+                <SummaryCard label={`${dashboardData.summary.year}年の実績配当`} value={formatYen(dashboardData.summary.monthlyTotals.reduce((sum, item) => sum + item.amount, 0))} />
                 <SummaryCard label="処理済み" value={formatYen(dashboardData.summary.processedAmount)} sub={`${dashboardData.summary.processedCount}件`} tone="emerald" />
                 <SummaryCard label="未処理" value={formatYen(dashboardData.summary.unprocessedAmount)} sub={`${dashboardData.summary.unprocessedCount}件`} tone="amber" />
             </div>
@@ -350,9 +374,11 @@ function SummaryCard({ label, value, sub, tone = 'indigo' }: { label: string; va
     );
 }
 
-function buildClientSummary(payments: DividendPayment[]): DividendSummary {
-    const currentYear = new Date().getFullYear();
+function buildClientSummary(payments: DividendPayment[], selectedYear: number): DividendSummary {
     const monthlyTotals = Array.from({ length: 12 }, (_, index) => ({ month: index + 1, amount: 0 }));
+    const availableYears = Array.from(new Set(payments.map(payment => new Date(`${payment.paymentDate}T00:00:00`).getFullYear())))
+        .filter(year => Number.isFinite(year))
+        .sort((a, b) => b - a);
     let totalAmount = 0;
     let processedAmount = 0;
     let unprocessedAmount = 0;
@@ -370,7 +396,7 @@ function buildClientSummary(payments: DividendPayment[]): DividendSummary {
         }
 
         const date = new Date(`${payment.paymentDate}T00:00:00`);
-        if (date.getFullYear() === currentYear) {
+        if (date.getFullYear() === selectedYear) {
             monthlyTotals[date.getMonth()].amount += payment.amount;
         }
     });
@@ -382,5 +408,7 @@ function buildClientSummary(payments: DividendPayment[]): DividendSummary {
         processedCount,
         unprocessedCount,
         monthlyTotals,
+        year: selectedYear,
+        availableYears: availableYears.length > 0 ? availableYears : [selectedYear],
     };
 }

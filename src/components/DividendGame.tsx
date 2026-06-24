@@ -1,13 +1,32 @@
 'use client';
 
 import { motion, useSpring, useTransform, useInView } from 'framer-motion';
-import { Droplets, Sparkles } from 'lucide-react';
-import { EXPENSES, TOTAL_EXPENSES, MONTHLY_DIVIDEND } from '@/lib/mockData';
+import { Droplets, Plus, Save, Sparkles, Trash2 } from 'lucide-react';
 import { cn } from './ui/Button';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { DEFAULT_EXPENSE_ITEMS, getExpenseItems, saveExpenseItems } from '@/app/actions/expenseActions';
+import type { ExpenseItem } from '@/app/actions/expenseActions';
 
-export function DividendGame() {
-    const coveragePercent = Math.min(100, Math.round((MONTHLY_DIVIDEND / TOTAL_EXPENSES) * 100));
+type DividendGameProps = {
+    annualDividendAmount?: number;
+    dividendYear?: number;
+};
+
+const COLORS = ['bg-rose-400', 'bg-orange-400', 'bg-yellow-400', 'bg-green-400', 'bg-pink-400', 'bg-purple-400', 'bg-cyan-400', 'bg-indigo-400'];
+
+export function DividendGame({ annualDividendAmount = 0, dividendYear = new Date().getFullYear() }: DividendGameProps) {
+    const [expenseItems, setExpenseItems] = useState<ExpenseItem[]>(DEFAULT_EXPENSE_ITEMS);
+    const [draftItems, setDraftItems] = useState<ExpenseItem[]>(DEFAULT_EXPENSE_ITEMS);
+    const [isEditing, setIsEditing] = useState(false);
+    const [isSaving, setIsSaving] = useState(false);
+    const [message, setMessage] = useState('');
+
+    const totalExpenses = useMemo(
+        () => expenseItems.reduce((sum, item) => sum + item.amount, 0),
+        [expenseItems]
+    );
+    const monthlyDividend = Math.round(annualDividendAmount / 12);
+    const coveragePercent = totalExpenses > 0 ? Math.min(100, Math.round((monthlyDividend / totalExpenses) * 100)) : 0;
 
     // Count-up animation for percentage
     const motionValue = useSpring(0, { stiffness: 50, damping: 20 });
@@ -17,6 +36,16 @@ export function DividendGame() {
     // Initial check for in-view to trigger animations
     const ref = useRef(null);
     const isInView = useInView(ref, { once: true });
+
+    useEffect(() => {
+        const loadExpenses = async () => {
+            const result = await getExpenseItems();
+            setExpenseItems(result.items);
+            setDraftItems(result.items);
+            if (!result.success && result.message) setMessage(result.message);
+        };
+        void loadExpenses();
+    }, []);
 
     useEffect(() => {
         if (isInView) {
@@ -33,6 +62,44 @@ export function DividendGame() {
         });
         return () => unsubscribe();
     }, [springValue]);
+
+    const updateDraftItem = (index: number, patch: Partial<ExpenseItem>) => {
+        setDraftItems(prev => prev.map((item, itemIndex) => itemIndex === index ? { ...item, ...patch } : item));
+    };
+
+    const addDraftItem = () => {
+        setDraftItems(prev => [
+            ...prev,
+            {
+                label: 'その他',
+                emoji: '💡',
+                amount: 10000,
+                color: COLORS[prev.length % COLORS.length],
+                sortOrder: prev.length,
+            },
+        ]);
+    };
+
+    const removeDraftItem = (index: number) => {
+        setDraftItems(prev => prev.filter((_, itemIndex) => itemIndex !== index));
+    };
+
+    const handleSaveExpenses = async () => {
+        setIsSaving(true);
+        setMessage('');
+        const result = await saveExpenseItems(draftItems);
+        setIsSaving(false);
+
+        if (!result.success) {
+            setMessage(result.message);
+            return;
+        }
+
+        setExpenseItems(result.items);
+        setDraftItems(result.items);
+        setIsEditing(false);
+        setMessage(result.message);
+    };
 
     // Stagger container for blocks
     const containerVariants = {
@@ -79,17 +146,17 @@ export function DividendGame() {
                         animate={isInView ? "visible" : "hidden"}
                         className="w-full flex flex-col-reverse gap-1 p-6 bg-white/40 backdrop-blur-sm rounded-3xl border border-white shadow-xl relative"
                     >
-                        {EXPENSES.map((expense, index) => (
+                        {expenseItems.map((expense) => (
                             <motion.div
-                                key={expense.id}
+                                key={`${expense.label}-${expense.sortOrder}`}
                                 variants={blockVariants}
                                 className={cn(
                                     "w-full rounded-xl flex items-center justify-between px-5 py-3 text-white font-bold text-base shadow-md relative overflow-hidden group hover:scale-105 transition-transform cursor-pointer",
                                     expense.color
                                 )}
-                                style={{ height: `${(expense.amount / TOTAL_EXPENSES) * 350}px`, minHeight: '50px' }}
+                                style={{ height: `${totalExpenses > 0 ? (expense.amount / totalExpenses) * 350 : 50}px`, minHeight: '50px' }}
                             >
-                                <span className="z-10 drop-shadow-md">{expense.label}</span>
+                                <span className="z-10 drop-shadow-md">{expense.emoji} {expense.label}</span>
                                 <span className="z-10 text-sm opacity-90">¥{expense.amount.toLocaleString()}</span>
 
                                 {/* Shine effect */}
@@ -98,8 +165,18 @@ export function DividendGame() {
                         ))}
                     </motion.div>
                     <div className="mt-6 text-center text-base text-slate-500 font-medium bg-white/60 px-6 py-3 rounded-full backdrop-blur-sm shadow-sm">
-                        毎月の生活費合計: <span className="text-slate-800 font-bold text-xl">¥{TOTAL_EXPENSES.toLocaleString()}</span>
+                        毎月の生活費合計: <span className="text-slate-800 font-bold text-xl">¥{totalExpenses.toLocaleString()}</span>
                     </div>
+                    <button
+                        type="button"
+                        onClick={() => {
+                            setDraftItems(expenseItems);
+                            setIsEditing(true);
+                        }}
+                        className="mt-3 rounded-full bg-indigo-600 px-5 py-2 text-sm font-bold text-white shadow-lg shadow-indigo-200 transition-transform hover:scale-105 hover:bg-indigo-700"
+                    >
+                        生活費を設定する
+                    </button>
                 </div>
 
                 {/* Right: The Magic Water (Dividends) */}
@@ -162,10 +239,109 @@ export function DividendGame() {
 
                     <div className="mt-6 text-center">
                         <div className="text-xs text-indigo-400 font-bold tracking-wider mb-1">ひと月あたりの配当収入</div>
-                        <div className="text-3xl font-black text-indigo-700">¥{MONTHLY_DIVIDEND.toLocaleString()}</div>
+                        <div className="text-3xl font-black text-indigo-700">¥{monthlyDividend.toLocaleString()}</div>
+                        <div className="mt-1 text-xs font-bold text-slate-400">{dividendYear}年の実績配当 ÷ 12ヶ月</div>
                     </div>
                 </div>
             </div>
+            {message && (
+                <div className="mt-3 rounded-xl bg-indigo-50 px-4 py-3 text-sm font-bold text-indigo-700">
+                    {message}
+                </div>
+            )}
+
+            {isEditing && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-indigo-950/40 p-4 backdrop-blur-sm">
+                    <div className="max-h-[90vh] w-full max-w-4xl overflow-auto rounded-3xl bg-white p-6 shadow-2xl">
+                        <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                            <div>
+                                <h3 className="text-2xl font-black text-indigo-900">生活費ブロックを作る</h3>
+                                <p className="mt-1 text-sm text-slate-500">絵文字、項目名、金額を自由に設定できます。色も好きなブロックにどうぞ。</p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setIsEditing(false)}
+                                className="rounded-full bg-slate-100 px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-200"
+                            >
+                                閉じる
+                            </button>
+                        </div>
+
+                        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                            {draftItems.map((item, index) => (
+                                <div key={`${item.label}-${index}`} className={cn("rounded-2xl p-4 text-white shadow-lg", item.color)}>
+                                    <div className="mb-3 flex items-center justify-between gap-3">
+                                        <input
+                                            value={item.emoji}
+                                            onChange={(event) => updateDraftItem(index, { emoji: event.target.value })}
+                                            className="h-12 w-14 rounded-xl border-0 bg-white/85 text-center text-2xl text-slate-800 shadow-sm"
+                                            aria-label="絵文字"
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => removeDraftItem(index)}
+                                            className="rounded-full bg-white/20 p-2 text-white hover:bg-white/30"
+                                            title="削除"
+                                        >
+                                            <Trash2 className="h-4 w-4" />
+                                        </button>
+                                    </div>
+                                    <div className="grid grid-cols-[1fr_140px] gap-3">
+                                        <input
+                                            value={item.label}
+                                            onChange={(event) => updateDraftItem(index, { label: event.target.value })}
+                                            className="rounded-xl border-0 bg-white/85 px-3 py-2 font-bold text-slate-800 shadow-sm"
+                                            placeholder="項目名"
+                                        />
+                                        <input
+                                            type="number"
+                                            value={item.amount}
+                                            onChange={(event) => updateDraftItem(index, { amount: Number(event.target.value) })}
+                                            className="rounded-xl border-0 bg-white/85 px-3 py-2 text-right font-bold text-slate-800 shadow-sm"
+                                            placeholder="金額"
+                                        />
+                                    </div>
+                                    <div className="mt-3 flex flex-wrap gap-2">
+                                        {COLORS.map(color => (
+                                            <button
+                                                key={color}
+                                                type="button"
+                                                onClick={() => updateDraftItem(index, { color })}
+                                                className={cn(
+                                                    "h-7 w-7 rounded-full border-2 border-white/80 shadow-sm transition-transform hover:scale-110",
+                                                    color,
+                                                    item.color === color ? 'ring-4 ring-white/70' : ''
+                                                )}
+                                                aria-label={color}
+                                            />
+                                        ))}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+
+                        <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                            <button
+                                type="button"
+                                onClick={addDraftItem}
+                                className="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-100 px-4 py-3 text-sm font-bold text-slate-700 hover:bg-slate-200"
+                            >
+                                <Plus className="h-4 w-4" />
+                                項目を追加
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => void handleSaveExpenses()}
+                                disabled={isSaving}
+                                className="inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-6 py-3 text-sm font-bold text-white shadow-lg shadow-indigo-200 hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                                <Save className="h-4 w-4" />
+                                {isSaving ? '保存中...' : '生活費設定を保存'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </section>
     );
 }

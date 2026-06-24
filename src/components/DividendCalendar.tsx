@@ -54,16 +54,8 @@ export function DividendCalendar({
     };
 
     const barVariant = {
-        hidden: { height: 0, opacity: 0 },
-        show: {
-            height: '100%',
-            opacity: 1,
-            transition: {
-                type: "spring" as const,
-                stiffness: 100,
-                damping: 12
-            }
-        }
+        hidden: { opacity: 0 },
+        show: { opacity: 1 }
     };
 
     return (
@@ -119,7 +111,15 @@ export function DividendCalendar({
                                     // 通常時のバー表示
                                     <motion.div
                                         variants={barVariant}
-                                        style={{ height: `${heightPercent}%` }}
+                                        initial={{ height: 0, opacity: 0 }}
+                                        whileInView={{ height: `${heightPercent}%`, opacity: 1 }}
+                                        viewport={{ once: true, amount: 0.2 }}
+                                        transition={{
+                                            type: "spring" as const,
+                                            stiffness: 100,
+                                            damping: 12,
+                                            delay: index * 0.05,
+                                        }}
                                         className="w-full bg-gradient-to-t from-cyan-500 via-blue-400 to-amber-300 rounded-t-md opacity-90 group-hover:opacity-100 transition-opacity"
                                     />
                                 )}

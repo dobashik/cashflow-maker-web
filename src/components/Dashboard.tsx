@@ -16,6 +16,8 @@ import { Holding } from '@/lib/mockData';
 export function DashboardContent({ animationKey = 0, isSampleMode = false }: { animationKey?: number, isSampleMode?: boolean }) {
     const [sharedHoldings, setSharedHoldings] = useState<Holding[]>([]);
     const [actualMonthlyDividends, setActualMonthlyDividends] = useState<{ month: string; amount: number }[]>([]);
+    const [actualAnnualDividend, setActualAnnualDividend] = useState(0);
+    const [dividendYear, setDividendYear] = useState(new Date().getFullYear());
 
     return (
         <div className="container mx-auto px-4 space-y-8">
@@ -27,7 +29,10 @@ export function DashboardContent({ animationKey = 0, isSampleMode = false }: { a
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.6 }}
                 >
-                    <DividendGame />
+                    <DividendGame
+                        annualDividendAmount={actualAnnualDividend}
+                        dividendYear={dividendYear}
+                    />
                 </motion.div>
             </section>
 
@@ -74,6 +79,10 @@ export function DashboardContent({ animationKey = 0, isSampleMode = false }: { a
                     <DividendHistory
                         isSampleMode={isSampleMode}
                         onMonthlyDataUpdate={setActualMonthlyDividends}
+                        onAnnualDataUpdate={(annualAmount, year) => {
+                            setActualAnnualDividend(annualAmount);
+                            setDividendYear(year);
+                        }}
                     />
                 </motion.div>
             </section>

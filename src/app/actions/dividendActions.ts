@@ -35,6 +35,8 @@ export type DividendSummary = {
     processedCount: number;
     unprocessedCount: number;
     monthlyTotals: { month: number; amount: number }[];
+    year: number;
+    availableYears: number[];
 };
 
 export type DividendDashboardData = {
@@ -67,9 +69,11 @@ const normalizeIncomingPayment = (payment: ImportedDividendPayment): ImportedDiv
     };
 };
 
-const buildSummary = (payments: DividendPayment[]): DividendSummary => {
-    const currentYear = new Date().getFullYear();
+const buildSummary = (payments: DividendPayment[], selectedYear = new Date().getFullYear()): DividendSummary => {
     const monthlyTotals = Array.from({ length: 12 }, (_, index) => ({ month: index + 1, amount: 0 }));
+    const availableYears = Array.from(new Set(payments.map(payment => new Date(`${payment.paymentDate}T00:00:00`).getFullYear())))
+        .filter(year => Number.isFinite(year))
+        .sort((a, b) => b - a);
 
     let totalAmount = 0;
     let processedAmount = 0;
@@ -89,9 +93,8 @@ const buildSummary = (payments: DividendPayment[]): DividendSummary => {
         }
 
         const date = new Date(`${payment.paymentDate}T00:00:00`);
-        if (date.getFullYear() === currentYear) {
-            monthlyTotals[date.getMonth()].amount += payment.amount;
-        }
+        if (date.getFullYear() !== selectedYear) return;
+        monthlyTotals[date.getMonth()].amount += payment.amount;
     });
 
     return {
@@ -101,10 +104,12 @@ const buildSummary = (payments: DividendPayment[]): DividendSummary => {
         processedCount,
         unprocessedCount,
         monthlyTotals,
+        year: selectedYear,
+        availableYears: availableYears.length > 0 ? availableYears : [selectedYear],
     };
 };
 
-export async function getDividendDashboardData(): Promise<{
+export async function getDividendDashboardData(selectedYear = new Date().getFullYear()): Promise<{
     success: boolean;
     data: DividendDashboardData;
     message?: string;
@@ -112,7 +117,7 @@ export async function getDividendDashboardData(): Promise<{
     const emptyData: DividendDashboardData = {
         payments: [],
         batches: [],
-        summary: buildSummary([]),
+        summary: buildSummary([], selectedYear),
     };
 
     const supabase = await createClient();
@@ -171,7 +176,7 @@ export async function getDividendDashboardData(): Promise<{
         data: {
             payments,
             batches,
-            summary: buildSummary(payments),
+            summary: buildSummary(payments, selectedYear),
         },
     };
 }
