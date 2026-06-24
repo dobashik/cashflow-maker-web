@@ -44,3 +44,7 @@ node_modules
 
 #not upload google key
 credentials/
+
+# Local SBI deposit/withdrawal sample data
+test-data/*DetailInquiry*.csv
+test-data/*入出金履歴*.csv

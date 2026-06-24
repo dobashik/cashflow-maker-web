@@ -204,7 +204,6 @@ export function PortfolioPie({ holdings = [], onUpgradeClick, isSampleMode = fal
 
         const lines = [
             '日本高配当株ポートフォリオのセクター分析',
-            `総評価額: ¥${Math.round(totalAssetsForCopy).toLocaleString()}`,
             `総保有銘柄数: ${aggregatedHoldings.length}銘柄`,
             '',
             'セクター別保有割合（評価額ベース・降順）:',
@@ -212,20 +211,7 @@ export function PortfolioPie({ holdings = [], onUpgradeClick, isSampleMode = fal
 
         activeSectors.forEach((entry, index) => {
             const percentage = totalAssetsForCopy > 0 ? ((entry.value / totalAssetsForCopy) * 100).toFixed(1) : '0.0';
-            const sectorHoldings = aggregatedHoldings
-                .filter(item => {
-                    const normalizedSector = SECTOR_MASTER_LIST.includes(item.sector) ? item.sector : 'その他';
-                    return normalizedSector === entry.name;
-                })
-                .sort((a, b) => (b.price * b.quantity) - (a.price * a.quantity));
-
-            lines.push('');
-            lines.push(`${index + 1}. ${entry.name}: ${percentage}% / ¥${Math.round(entry.value).toLocaleString()} / ${entry.count}銘柄`);
-            lines.push('保有銘柄:');
-            sectorHoldings.forEach(stock => {
-                const stockValue = (stock.price || 0) * (stock.quantity || 0);
-                lines.push(`- ${stock.code} ${stock.name}（${stock.quantity.toLocaleString()}株 / 評価額 ¥${Math.round(stockValue).toLocaleString()}）`);
-            });
+            lines.push(`${index + 1}. ${entry.name}: ${percentage}% / ${entry.count}銘柄`);
         });
 
         void copyText(lines.join('\n'), 'sector-analysis-ai');
