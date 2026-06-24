@@ -15,9 +15,20 @@ type DividendGameProps = {
 
 const COLORS = ['bg-rose-400', 'bg-orange-400', 'bg-yellow-400', 'bg-green-400', 'bg-pink-400', 'bg-purple-400', 'bg-cyan-400', 'bg-indigo-400'];
 
+type DraftExpenseItem = ExpenseItem & {
+    clientId: string;
+};
+
+const toDraftItems = (items: ExpenseItem[]): DraftExpenseItem[] => items.map((item, index) => ({
+    ...item,
+    clientId: item.id || `draft-${index}-${item.label}`,
+}));
+
+const toExpenseItems = (items: DraftExpenseItem[]): ExpenseItem[] => items.map(({ clientId: _clientId, ...item }) => item);
+
 export function DividendGame({ annualDividendAmount = 0, dividendYear = new Date().getFullYear() }: DividendGameProps) {
     const [expenseItems, setExpenseItems] = useState<ExpenseItem[]>(DEFAULT_EXPENSE_ITEMS);
-    const [draftItems, setDraftItems] = useState<ExpenseItem[]>(DEFAULT_EXPENSE_ITEMS);
+    const [draftItems, setDraftItems] = useState<DraftExpenseItem[]>(() => toDraftItems(DEFAULT_EXPENSE_ITEMS));
     const [isEditing, setIsEditing] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [message, setMessage] = useState('');
@@ -42,7 +53,7 @@ export function DividendGame({ annualDividendAmount = 0, dividendYear = new Date
         const loadExpenses = async () => {
             const result = await getExpenseItems();
             setExpenseItems(result.items);
-            setDraftItems(result.items);
+            setDraftItems(toDraftItems(result.items));
             if (!result.success && result.message) setMessage(result.message);
         };
         void loadExpenses();
@@ -77,6 +88,7 @@ export function DividendGame({ annualDividendAmount = 0, dividendYear = new Date
                 amount: 10000,
                 color: COLORS[prev.length % COLORS.length],
                 sortOrder: prev.length,
+                clientId: `new-${Date.now()}-${prev.length}`,
             },
         ]);
     };
@@ -88,7 +100,7 @@ export function DividendGame({ annualDividendAmount = 0, dividendYear = new Date
     const handleSaveExpenses = async () => {
         setIsSaving(true);
         setMessage('');
-        const result = await saveExpenseItems(draftItems);
+        const result = await saveExpenseItems(toExpenseItems(draftItems));
         setIsSaving(false);
 
         if (!result.success) {
@@ -97,7 +109,7 @@ export function DividendGame({ annualDividendAmount = 0, dividendYear = new Date
         }
 
         setExpenseItems(result.items);
-        setDraftItems(result.items);
+        setDraftItems(toDraftItems(result.items));
         setIsEditing(false);
         setMessage(result.message);
     };
@@ -171,7 +183,7 @@ export function DividendGame({ annualDividendAmount = 0, dividendYear = new Date
                     <button
                         type="button"
                         onClick={() => {
-                            setDraftItems(expenseItems);
+                            setDraftItems(toDraftItems(expenseItems));
                             setIsEditing(true);
                         }}
                         className="mt-3 rounded-full bg-indigo-600 px-5 py-2 text-sm font-bold text-white shadow-lg shadow-indigo-200 transition-transform hover:scale-105 hover:bg-indigo-700"
@@ -270,7 +282,7 @@ export function DividendGame({ annualDividendAmount = 0, dividendYear = new Date
 
                         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                             {draftItems.map((item, index) => (
-                                <div key={`${item.label}-${index}`} className={cn("rounded-2xl p-4 text-white shadow-lg", item.color)}>
+                                <div key={item.clientId} className={cn("rounded-2xl p-4 text-white shadow-lg", item.color)}>
                                     <div className="mb-3 flex items-center justify-between gap-3">
                                         <input
                                             value={item.emoji}
