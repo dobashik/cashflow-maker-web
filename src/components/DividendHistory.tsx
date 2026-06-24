@@ -15,6 +15,8 @@ import type { DividendDashboardData, DividendImportBatch, DividendPayment, Divid
 type MonthlyDividend = {
     month: string;
     amount: number;
+    status?: 'actual' | 'projected';
+    sourceLabel?: string;
 };
 
 type DividendHistoryProps = {
@@ -41,6 +43,7 @@ const emptyDashboardData: DividendDashboardData = {
 };
 
 const formatYen = (amount: number) => `¥${Math.round(amount).toLocaleString()}`;
+const INITIAL_PAYMENT_ROWS = 15;
 
 const taxLabel = (taxCategory: DividendPayment['taxCategory']) => {
     if (taxCategory === 'NISA') return 'NISA';
@@ -59,6 +62,7 @@ export function DividendHistory({ isSampleMode = false, onMonthlyDataUpdate, onA
     const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
     const [bulkProcessedUntil, setBulkProcessedUntil] = useState(() => new Date().toISOString().slice(0, 10));
     const [isBulkProcessing, setIsBulkProcessing] = useState(false);
+    const [showAllPayments, setShowAllPayments] = useState(false);
 
     const loadData = useCallback(async (year = selectedYear) => {
         if (isSampleMode) return;
@@ -83,12 +87,8 @@ export function DividendHistory({ isSampleMode = false, onMonthlyDataUpdate, onA
 
     useEffect(() => {
         if (!onMonthlyDataUpdate) return;
-        const monthlyData = dashboardData.summary.monthlyTotals.map(item => ({
-            month: `${item.month}月`,
-            amount: item.amount,
-        }));
-        onMonthlyDataUpdate(monthlyData);
-    }, [dashboardData.summary.monthlyTotals, onMonthlyDataUpdate]);
+        onMonthlyDataUpdate(buildRollingDividendCalendarData(dashboardData.payments));
+    }, [dashboardData.payments, onMonthlyDataUpdate]);
 
     useEffect(() => {
         if (!onAnnualDataUpdate) return;
@@ -100,6 +100,13 @@ export function DividendHistory({ isSampleMode = false, onMonthlyDataUpdate, onA
         () => dashboardData.payments.filter(payment => showProcessed || !payment.isProcessed),
         [dashboardData.payments, showProcessed]
     );
+
+    const displayedPayments = useMemo(
+        () => showAllPayments ? visiblePayments : visiblePayments.slice(0, INITIAL_PAYMENT_ROWS),
+        [showAllPayments, visiblePayments]
+    );
+
+    const hiddenPaymentCount = Math.max(visiblePayments.length - displayedPayments.length, 0);
 
     const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0];
@@ -298,19 +305,38 @@ export function DividendHistory({ isSampleMode = false, onMonthlyDataUpdate, onA
             <div className="mt-6 grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
                 <div className="min-w-0">
                     <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-                        <h4 className="font-bold text-slate-800">配当金一覧</h4>
-                        <label className="inline-flex cursor-pointer items-center gap-2 text-xs font-bold text-slate-500">
-                            <input
-                                type="checkbox"
-                                checked={showProcessed}
-                                onChange={(event) => setShowProcessed(event.target.checked)}
-                                className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-600"
-                            />
-                            処理済みも表示
-                        </label>
+                        <div>
+                            <h4 className="font-bold text-slate-800">配当金一覧</h4>
+                            <p className="mt-1 text-xs text-slate-400">
+                                {visiblePayments.length}件中 {displayedPayments.length}件を表示
+                            </p>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-3">
+                            {visiblePayments.length > INITIAL_PAYMENT_ROWS && (
+                                <button
+                                    type="button"
+                                    onClick={() => setShowAllPayments(prev => !prev)}
+                                    className="rounded-full bg-indigo-50 px-3 py-1.5 text-xs font-bold text-indigo-600 hover:bg-indigo-100"
+                                >
+                                    {showAllPayments ? '15件表示に戻す' : `残り${hiddenPaymentCount}件を表示`}
+                                </button>
+                            )}
+                            <label className="inline-flex cursor-pointer items-center gap-2 text-xs font-bold text-slate-500">
+                                <input
+                                    type="checkbox"
+                                    checked={showProcessed}
+                                    onChange={(event) => {
+                                        setShowProcessed(event.target.checked);
+                                        setShowAllPayments(false);
+                                    }}
+                                    className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-600"
+                                />
+                                処理済みも表示
+                            </label>
+                        </div>
                     </div>
 
-                    <div className="overflow-auto rounded-xl border border-slate-100">
+                    <div className={`overflow-auto rounded-xl border border-slate-100 ${showAllPayments ? 'max-h-[620px]' : ''}`}>
                         <table className="w-full min-w-[760px] text-sm">
                             <thead className="bg-slate-50 text-xs text-slate-500">
                                 <tr>
@@ -322,7 +348,7 @@ export function DividendHistory({ isSampleMode = false, onMonthlyDataUpdate, onA
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100">
-                                {visiblePayments.map(payment => (
+                                {displayedPayments.map(payment => (
                                     <tr key={payment.id} className={payment.isProcessed ? 'bg-slate-50/60 text-slate-500' : 'bg-white'}>
                                         <td className="px-4 py-3">
                                             <button
@@ -360,6 +386,11 @@ export function DividendHistory({ isSampleMode = false, onMonthlyDataUpdate, onA
                             </tbody>
                         </table>
                     </div>
+                    {visiblePayments.length > INITIAL_PAYMENT_ROWS && !showAllPayments && (
+                        <div className="mt-3 rounded-xl bg-slate-50 p-3 text-center text-xs font-bold text-slate-500">
+                            長期履歴に備えて直近{INITIAL_PAYMENT_ROWS}件だけ表示しています。必要なときだけ全件を開けます。
+                        </div>
+                    )}
                 </div>
 
                 <div className="rounded-xl border border-slate-100 bg-slate-50/70 p-4">
@@ -469,4 +500,36 @@ function buildClientSummary(payments: DividendPayment[], selectedYear: number): 
         year: selectedYear,
         availableYears: availableYears.length > 0 ? availableYears : [selectedYear],
     };
+}
+
+function buildRollingDividendCalendarData(payments: DividendPayment[]): MonthlyDividend[] {
+    const today = new Date();
+    const currentYear = today.getFullYear();
+    const currentMonthIndex = today.getMonth();
+    const monthlyAmountMap = new Map<string, number>();
+
+    payments.forEach(payment => {
+        const date = new Date(`${payment.paymentDate}T00:00:00`);
+        if (Number.isNaN(date.getTime())) return;
+
+        const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+        monthlyAmountMap.set(key, (monthlyAmountMap.get(key) || 0) + payment.amount);
+    });
+
+    return Array.from({ length: 12 }, (_, offset) => {
+        const displayDate = new Date(currentYear, currentMonthIndex + offset, 1);
+        const displayYear = displayDate.getFullYear();
+        const displayMonth = displayDate.getMonth() + 1;
+        const isCurrentMonth = offset === 0;
+        const sourceYear = isCurrentMonth ? displayYear : displayYear - 1;
+        const sourceKey = `${sourceYear}-${String(displayMonth).padStart(2, '0')}`;
+        const amount = monthlyAmountMap.get(sourceKey) || 0;
+
+        return {
+            month: `${displayMonth}月`,
+            amount,
+            status: isCurrentMonth ? 'actual' : 'projected',
+            sourceLabel: isCurrentMonth ? `${displayYear}年実績` : `${sourceYear}年同月`,
+        };
+    });
 }

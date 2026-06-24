@@ -9,6 +9,8 @@ import { Lock, Sparkles } from 'lucide-react';
 type MonthlyDividend = {
     month: string;
     amount: number;
+    status?: 'actual' | 'projected';
+    sourceLabel?: string;
 };
 
 export function DividendCalendar({
@@ -20,11 +22,12 @@ export function DividendCalendar({
     isSampleMode?: boolean,
     monthlyData?: MonthlyDividend[],
 }) {
-    const displayData = monthlyData && monthlyData.some(item => item.amount > 0)
+    const displayData: MonthlyDividend[] = monthlyData && monthlyData.some(item => item.amount > 0)
         ? monthlyData
         : MONTHLY_DIVIDENDS_DATA;
     const isActualData = Boolean(monthlyData && monthlyData.some(item => item.amount > 0));
     const maxAmount = Math.max(...displayData.map(d => d.amount), 1) * 1.1; // Add buffer
+    const rollingYearTotal = displayData.reduce((sum, item) => sum + item.amount, 0);
 
     const [hasAccess, setHasAccess] = useState(true);
     const currentMonth = new Date().getMonth() + 1; // 1-12
@@ -70,8 +73,24 @@ export function DividendCalendar({
             </h3>
             <p className="text-xs font-mono text-slate-400 mb-2 uppercase tracking-widest">MONTHLY DIVIDENDS</p>
             <p className="mb-8 text-xs text-slate-400">
-                {isActualData ? 'SBI入出金明細から取り込んだ今年の配当実績です。' : '配当金履歴を取り込むと、実績ベースの月別配当が表示されます。'}
+                {isActualData
+                    ? '今月から12か月分を表示します。未来月は前年同月の実績を参考値として表示します。'
+                    : '配当金履歴を取り込むと、実績ベースの月別配当が表示されます。'}
             </p>
+
+            <div className="mb-6 rounded-2xl bg-gradient-to-r from-indigo-50 via-cyan-50 to-emerald-50 p-4">
+                <div className="text-xs font-bold text-slate-500">
+                    {isActualData ? '直近1年ベースの配当金総額' : 'サンプル年間配当金額'}
+                </div>
+                <div className="mt-1 text-3xl font-black text-indigo-900">
+                    ¥{rollingYearTotal.toLocaleString()}
+                </div>
+                {isActualData && (
+                    <p className="mt-1 text-[11px] font-bold text-slate-400">
+                        今月の実績と、未来月の前年同月実績を合計しています。
+                    </p>
+                )}
+            </div>
 
             <motion.div
                 className="w-full h-[250px] flex items-end justify-between gap-2 md:gap-4 px-2"
@@ -95,6 +114,9 @@ export function DividendCalendar({
                             {!isLocked && (
                                 <div className="absolute -top-10 opacity-0 group-hover:opacity-100 transition-opacity bg-indigo-900 text-white text-xs font-bold py-1 px-2 rounded-lg pointer-events-none whitespace-nowrap z-10 shadow-lg mb-2">
                                     ¥{item.amount.toLocaleString()}
+                                    {item.sourceLabel && (
+                                        <span className="ml-1 font-normal opacity-80">({item.sourceLabel})</span>
+                                    )}
                                     <div className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-full border-4 border-transparent border-t-indigo-900"></div>
                                 </div>
                             )}
@@ -120,7 +142,10 @@ export function DividendCalendar({
                                             damping: 12,
                                             delay: index * 0.05,
                                         }}
-                                        className="w-full bg-gradient-to-t from-cyan-500 via-blue-400 to-amber-300 rounded-t-md opacity-90 group-hover:opacity-100 transition-opacity"
+                                        className={`w-full rounded-t-md opacity-90 transition-opacity group-hover:opacity-100 ${item.status === 'projected'
+                                            ? 'bg-gradient-to-t from-amber-400 via-orange-300 to-yellow-200'
+                                            : 'bg-gradient-to-t from-cyan-500 via-blue-400 to-emerald-300'
+                                            }`}
                                     />
                                 )}
                             </div>
@@ -128,10 +153,26 @@ export function DividendCalendar({
                             <span className={`text-xs font-bold ${isLocked ? 'text-slate-300' : (item.month === `${currentMonth}月` ? 'text-indigo-600' : 'text-slate-400')}`}>
                                 {item.month}
                             </span>
+                            {item.status === 'projected' && (
+                                <span className="text-[10px] font-bold text-amber-500">前年</span>
+                            )}
                         </div>
                     );
                 })}
             </motion.div>
+
+            {isActualData && (
+                <div className="mt-5 flex flex-wrap items-center gap-3 border-t border-slate-100 pt-4 text-[11px] font-bold text-slate-400">
+                    <span className="inline-flex items-center gap-1">
+                        <span className="h-2.5 w-2.5 rounded-full bg-cyan-500" />
+                        今月の実績
+                    </span>
+                    <span className="inline-flex items-center gap-1">
+                        <span className="h-2.5 w-2.5 rounded-full bg-amber-400" />
+                        未来月は前年同月の実績
+                    </span>
+                </div>
+            )}
 
             {/* Pro登録リンク */}
             {!hasAccess && (

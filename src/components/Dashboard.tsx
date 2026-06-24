@@ -13,9 +13,16 @@ import { Footer } from '@/components/Footer';
 
 import { Holding } from '@/lib/mockData';
 
+type MonthlyDividend = {
+    month: string;
+    amount: number;
+    status?: 'actual' | 'projected';
+    sourceLabel?: string;
+};
+
 export function DashboardContent({ animationKey = 0, isSampleMode = false }: { animationKey?: number, isSampleMode?: boolean }) {
     const [sharedHoldings, setSharedHoldings] = useState<Holding[]>([]);
-    const [actualMonthlyDividends, setActualMonthlyDividends] = useState<{ month: string; amount: number }[]>([]);
+    const [actualMonthlyDividends, setActualMonthlyDividends] = useState<MonthlyDividend[]>([]);
     const [actualAnnualDividend, setActualAnnualDividend] = useState(0);
     const [dividendYear, setDividendYear] = useState(new Date().getFullYear());
 
