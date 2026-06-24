@@ -217,18 +217,30 @@ export async function saveDividendPaymentsFromSBI(
     }
 
     const fingerprints = uniquePayments.map(payment => payment.sourceFingerprint);
-    const { data: existingRows, error: existingError } = await supabase
-        .from('dividend_payments')
-        .select('source_fingerprint')
-        .eq('user_id', user.id)
-        .in('source_fingerprint', fingerprints);
+    const existingFingerprints = new Set<string>();
+    const chunkSize = 50;
 
-    if (existingError) {
-        console.error('Dividend Existing Check Error:', existingError);
-        return { success: false, message: '重複確認に失敗しました。Supabaseで配当金履歴テーブルのSQLを実行してください。', importedCount: 0, skippedDuplicateCount };
+    for (let i = 0; i < fingerprints.length; i += chunkSize) {
+        const chunk = fingerprints.slice(i, i + chunkSize);
+        const { data: existingRows, error: existingError } = await supabase
+            .from('dividend_payments')
+            .select('source_fingerprint')
+            .eq('user_id', user.id)
+            .in('source_fingerprint', chunk);
+
+        if (existingError) {
+            console.error('Dividend Existing Check Error:', existingError);
+            return {
+                success: false,
+                message: `重複確認に失敗しました: ${existingError.message}`,
+                importedCount: 0,
+                skippedDuplicateCount,
+            };
+        }
+
+        (existingRows || []).forEach(row => existingFingerprints.add(row.source_fingerprint));
     }
 
-    const existingFingerprints = new Set((existingRows || []).map(row => row.source_fingerprint));
     const newPayments = uniquePayments.filter(payment => !existingFingerprints.has(payment.sourceFingerprint));
     skippedDuplicateCount += uniquePayments.length - newPayments.length;
 
