@@ -6,6 +6,7 @@ import { loadCSV, parseSBIDividendPaymentCSV } from '@/utils/csvParser';
 import {
     deleteDividendImportBatch,
     getDividendDashboardData,
+    markDividendPaymentsProcessedUntil,
     saveDividendPaymentsFromSBI,
     updateDividendPaymentProcessed,
 } from '@/app/actions/dividendActions';
@@ -56,6 +57,8 @@ export function DividendHistory({ isSampleMode = false, onMonthlyDataUpdate, onA
     const [message, setMessage] = useState('');
     const [showProcessed, setShowProcessed] = useState(true);
     const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+    const [bulkProcessedUntil, setBulkProcessedUntil] = useState(() => new Date().toISOString().slice(0, 10));
+    const [isBulkProcessing, setIsBulkProcessing] = useState(false);
 
     const loadData = useCallback(async (year = selectedYear) => {
         if (isSampleMode) return;
@@ -164,6 +167,30 @@ export function DividendHistory({ isSampleMode = false, onMonthlyDataUpdate, onA
         await loadData(selectedYear);
     };
 
+    const handleBulkProcessUntil = async () => {
+        if (!bulkProcessedUntil) {
+            setError('処理済みにする基準日を指定してください');
+            return;
+        }
+
+        if (!confirm(`${bulkProcessedUntil}以前の未処理配当をすべて処理済みにしますか？`)) return;
+
+        setIsBulkProcessing(true);
+        setError('');
+        setMessage('');
+
+        const result = await markDividendPaymentsProcessedUntil(bulkProcessedUntil);
+        setIsBulkProcessing(false);
+
+        if (!result.success) {
+            setError(result.message);
+            return;
+        }
+
+        setMessage(result.message);
+        await loadData(selectedYear);
+    };
+
     const handleYearChange = (year: number) => {
         setSelectedYear(year);
         void loadData(year);
@@ -224,6 +251,37 @@ export function DividendHistory({ isSampleMode = false, onMonthlyDataUpdate, onA
             <p className="mt-4 text-xs text-slate-500">
                 SBI証券の入出金明細から「入金」かつ「利金・配当金」だけを保存します。CSV本文は保存せず、期間が重なって同じ配当が含まれる場合は重複としてスキップします。
             </p>
+
+            <div className="mt-5 rounded-2xl border border-emerald-100 bg-gradient-to-r from-emerald-50 via-cyan-50 to-indigo-50 p-4">
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                    <div>
+                        <div className="flex items-center gap-2 font-bold text-slate-800">
+                            <CheckCircle2 className="h-5 w-5 text-emerald-600" />
+                            指定日以前をまとめて処理済みにする
+                        </div>
+                        <p className="mt-1 text-xs text-slate-500">
+                            入力した日付以前の未処理データだけを処理済みにします。すでに処理済みのデータはそのままです。
+                        </p>
+                    </div>
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                        <input
+                            type="date"
+                            value={bulkProcessedUntil}
+                            onChange={(event) => setBulkProcessedUntil(event.target.value)}
+                            className="rounded-xl border border-emerald-100 bg-white px-3 py-2 text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-emerald-200"
+                        />
+                        <button
+                            type="button"
+                            onClick={() => void handleBulkProcessUntil()}
+                            disabled={isBulkProcessing || isLoading}
+                            className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-bold text-white shadow-sm hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                            <CheckCircle2 className="h-4 w-4" />
+                            {isBulkProcessing ? '更新中...' : '一括で処理済み'}
+                        </button>
+                    </div>
+                </div>
+            </div>
 
             {(message || error) && (
                 <div className={`mt-4 rounded-xl p-3 text-sm ${error ? 'bg-rose-50 text-rose-700' : 'bg-emerald-50 text-emerald-700'}`}>

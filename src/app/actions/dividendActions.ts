@@ -323,6 +323,46 @@ export async function updateDividendPaymentProcessed(
     return { success: true, message: isProcessed ? '処理済みにしました' : '未処理に戻しました' };
 }
 
+export async function markDividendPaymentsProcessedUntil(
+    cutoffDate: string
+): Promise<{ success: boolean; message: string; updatedCount: number }> {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) {
+        return { success: false, message: 'ログインが必要です', updatedCount: 0 };
+    }
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(cutoffDate)) {
+        return { success: false, message: '日付を正しく指定してください', updatedCount: 0 };
+    }
+
+    const now = new Date().toISOString();
+    const { data, error } = await supabase
+        .from('dividend_payments')
+        .update({
+            is_processed: true,
+            processed_at: now,
+            updated_at: now,
+        })
+        .eq('user_id', user.id)
+        .eq('is_processed', false)
+        .lte('payment_date', cutoffDate)
+        .select('id');
+
+    if (error) {
+        console.error('Dividend Payments Bulk Processed Update Error:', error);
+        return { success: false, message: '一括処理済みの更新に失敗しました', updatedCount: 0 };
+    }
+
+    const updatedCount = data?.length ?? 0;
+    return {
+        success: true,
+        updatedCount,
+        message: `${cutoffDate}以前の未処理配当 ${updatedCount}件を処理済みにしました`,
+    };
+}
+
 export async function deleteDividendImportBatch(batchId: string): Promise<{ success: boolean; message: string }> {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
