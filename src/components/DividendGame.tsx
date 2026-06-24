@@ -26,7 +26,7 @@ const toDraftItems = (items: ExpenseItem[]): DraftExpenseItem[] => items.map((it
 
 const toExpenseItems = (items: DraftExpenseItem[]): ExpenseItem[] => items.map(({ clientId: _clientId, ...item }) => item);
 
-export function DividendGame({ annualDividendAmount = 0, dividendYear = new Date().getFullYear() }: DividendGameProps) {
+export function DividendGame({ annualDividendAmount = 0 }: DividendGameProps) {
     const [expenseItems, setExpenseItems] = useState<ExpenseItem[]>(DEFAULT_EXPENSE_ITEMS);
     const [draftItems, setDraftItems] = useState<DraftExpenseItem[]>(() => toDraftItems(DEFAULT_EXPENSE_ITEMS));
     const [isEditing, setIsEditing] = useState(false);
@@ -253,7 +253,7 @@ export function DividendGame({ annualDividendAmount = 0, dividendYear = new Date
                     <div className="mt-6 text-center">
                         <div className="text-xs text-indigo-400 font-bold tracking-wider mb-1">ひと月あたりの配当収入</div>
                         <div className="text-3xl font-black text-indigo-700">¥{monthlyDividend.toLocaleString()}</div>
-                        <div className="mt-1 text-xs font-bold text-slate-400">{dividendYear}年の実績配当 ÷ 12ヶ月</div>
+                        <div className="mt-1 text-xs font-bold text-slate-400">直近1年ベースの配当金総額 ÷ 12ヶ月</div>
                     </div>
                 </div>
             </div>

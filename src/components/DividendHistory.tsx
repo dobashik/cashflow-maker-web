@@ -92,9 +92,10 @@ export function DividendHistory({ isSampleMode = false, onMonthlyDataUpdate, onA
 
     useEffect(() => {
         if (!onAnnualDataUpdate) return;
-        const annualAmount = dashboardData.summary.monthlyTotals.reduce((sum, item) => sum + item.amount, 0);
-        onAnnualDataUpdate(annualAmount, dashboardData.summary.year);
-    }, [dashboardData.summary.monthlyTotals, dashboardData.summary.year, onAnnualDataUpdate]);
+        const rollingAnnualAmount = buildRollingDividendCalendarData(dashboardData.payments)
+            .reduce((sum, item) => sum + item.amount, 0);
+        onAnnualDataUpdate(rollingAnnualAmount, new Date().getFullYear());
+    }, [dashboardData.payments, onAnnualDataUpdate]);
 
     const visiblePayments = useMemo(
         () => dashboardData.payments.filter(payment => showProcessed || !payment.isProcessed),
