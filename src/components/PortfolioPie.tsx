@@ -26,6 +26,12 @@ const SECTOR_MASTER_LIST = [
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d', '#ffc658', '#8dd1e1'];
 
+type SectorSummary = {
+    name: string;
+    value: number;
+    count: number;
+};
+
 export function PortfolioPie({ holdings = [], onUpgradeClick, isSampleMode = false }: { holdings?: Holding[], onUpgradeClick?: () => void, isSampleMode?: boolean }) {
     const [hoveredSector, setHoveredSector] = useState<string | null>(null);
     const [hasAccess, setHasAccess] = useState(true);
@@ -67,7 +73,7 @@ export function PortfolioPie({ holdings = [], onUpgradeClick, isSampleMode = fal
     }, [isSampleMode]);
 
     // 2. リアルタイム集計ロジック (Updated with Count)
-    const data = useMemo(() => {
+    const allSectorData = useMemo<SectorSummary[]>(() => {
         // Step 1: Aggregate by sector
         const sectorCalc = new Map<string, { value: number; count: number }>();
 
@@ -107,10 +113,14 @@ export function PortfolioPie({ holdings = [], onUpgradeClick, isSampleMode = fal
         // Step 3: Sort by value descending
         const sorted = result.sort((a, b) => b.value - a.value);
 
+        return sorted;
+    }, [aggregatedHoldings]);
+
+    const data = useMemo(() => {
         // 無料ユーザー制限: 上位3セクターのみ表示、残りは「その他（ロック）」としてまとめる
-        if (!hasAccess && sorted.length > 3) {
-            const top3 = sorted.slice(0, 3);
-            const others = sorted.slice(3);
+        if (!hasAccess && allSectorData.length > 3) {
+            const top3 = allSectorData.slice(0, 3);
+            const others = allSectorData.slice(3);
 
             const lockedValue = others.reduce((sum, item) => sum + item.value, 0);
             const lockedCount = others.reduce((sum, item) => sum + item.count, 0);
@@ -125,10 +135,11 @@ export function PortfolioPie({ holdings = [], onUpgradeClick, isSampleMode = fal
             return top3;
         }
 
-        return sorted;
-    }, [aggregatedHoldings, hasAccess]);
+        return allSectorData;
+    }, [allSectorData, hasAccess]);
 
     const totalAssets = useMemo(() => data.reduce((sum, item) => sum + item.value, 0), [data]);
+    const totalAssetsForCopy = useMemo(() => allSectorData.reduce((sum, item) => sum + item.value, 0), [allSectorData]);
 
     // Filter for Pie Chart (Assets > 0 only)
     const pieData = useMemo(() => data.filter(d => d.value > 0), [data]);
@@ -153,10 +164,8 @@ export function PortfolioPie({ holdings = [], onUpgradeClick, isSampleMode = fal
         [sectorStocks, heldCodes]
     );
 
-    const copyCodes = async (codes: string[], key: string) => {
-        if (codes.length === 0) return;
-        const text = codes.join('\n');
-
+    const copyText = async (text: string, key: string) => {
+        if (!text.trim()) return;
         try {
             await navigator.clipboard.writeText(text);
         } catch {
@@ -180,8 +189,46 @@ export function PortfolioPie({ holdings = [], onUpgradeClick, isSampleMode = fal
         window.setTimeout(() => setCopiedKey(null), 1800);
     };
 
+    const copyCodes = async (codes: string[], key: string) => {
+        if (codes.length === 0) return;
+        await copyText(codes.join('\n'), key);
+    };
+
     const copySingleCode = (code: string) => {
         void copyCodes([code], `code-${code}`);
+    };
+
+    const copySectorAnalysisForAI = () => {
+        const activeSectors = allSectorData.filter(entry => entry.value > 0);
+        if (activeSectors.length === 0) return;
+
+        const lines = [
+            '日本高配当株ポートフォリオのセクター分析',
+            `総評価額: ¥${Math.round(totalAssetsForCopy).toLocaleString()}`,
+            `総保有銘柄数: ${aggregatedHoldings.length}銘柄`,
+            '',
+            'セクター別保有割合（評価額ベース・降順）:',
+        ];
+
+        activeSectors.forEach((entry, index) => {
+            const percentage = totalAssetsForCopy > 0 ? ((entry.value / totalAssetsForCopy) * 100).toFixed(1) : '0.0';
+            const sectorHoldings = aggregatedHoldings
+                .filter(item => {
+                    const normalizedSector = SECTOR_MASTER_LIST.includes(item.sector) ? item.sector : 'その他';
+                    return normalizedSector === entry.name;
+                })
+                .sort((a, b) => (b.price * b.quantity) - (a.price * a.quantity));
+
+            lines.push('');
+            lines.push(`${index + 1}. ${entry.name}: ${percentage}% / ¥${Math.round(entry.value).toLocaleString()} / ${entry.count}銘柄`);
+            lines.push('保有銘柄:');
+            sectorHoldings.forEach(stock => {
+                const stockValue = (stock.price || 0) * (stock.quantity || 0);
+                lines.push(`- ${stock.code} ${stock.name}（${stock.quantity.toLocaleString()}株 / 評価額 ¥${Math.round(stockValue).toLocaleString()}）`);
+            });
+        });
+
+        void copyText(lines.join('\n'), 'sector-analysis-ai');
     };
 
     const openOwnedSector = (sector: string, count: number) => {
@@ -217,13 +264,26 @@ export function PortfolioPie({ holdings = [], onUpgradeClick, isSampleMode = fal
 
     return (
         <div className="bg-white rounded-2xl p-6 shadow-sm border border-indigo-50 relative h-full">
-            <h3 className="text-xl font-bold text-indigo-900 mb-2 flex items-center gap-2">
-                セクター分析
-                <span className="rounded-full bg-indigo-100 px-2.5 py-1 text-xs font-bold text-indigo-700">
-                    {aggregatedHoldings.length}銘柄
-                </span>
-            </h3>
-            <p className="text-xs font-mono text-slate-400 mb-6 uppercase tracking-wider">SECTOR ANALYSIS</p>
+            <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                    <h3 className="text-xl font-bold text-indigo-900 mb-2 flex items-center gap-2">
+                        セクター分析
+                        <span className="rounded-full bg-indigo-100 px-2.5 py-1 text-xs font-bold text-indigo-700">
+                            {aggregatedHoldings.length}銘柄
+                        </span>
+                    </h3>
+                    <p className="text-xs font-mono text-slate-400 uppercase tracking-wider">SECTOR ANALYSIS</p>
+                </div>
+                <button
+                    type="button"
+                    onClick={copySectorAnalysisForAI}
+                    disabled={totalAssetsForCopy <= 0}
+                    className="inline-flex items-center justify-center gap-2 rounded-lg border border-indigo-100 bg-indigo-50 px-3 py-2 text-sm font-bold text-indigo-700 transition-colors hover:border-indigo-200 hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                    {copiedKey === 'sector-analysis-ai' ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                    {copiedKey === 'sector-analysis-ai' ? 'コピーしました' : 'AI分析用に全セクターをコピー'}
+                </button>
+            </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
 
