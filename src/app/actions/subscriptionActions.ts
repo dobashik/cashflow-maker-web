@@ -172,58 +172,7 @@ export async function checkPremiumAccess(): Promise<AccessCheckResult> {
     === 決済機能復旧時に有効化する判定ロジック ここまで === */
 }
 
-/**
- * サブスクリプションステータスを更新（Webhook用、service_roleが必要）
- * 注意: この関数はWebhook APIから呼び出される想定
- */
-export async function updateSubscriptionStatus(
-    userId: string,
-    status: SubscriptionStatus,
-    stripeCustomerId?: string
-): Promise<{ success: boolean; message: string }> {
-    // Note: この関数はWebhookから呼ばれるため、service_roleクライアントを使用
-    const { createServiceRoleClient } = await import('@/utils/supabase/service-role');
-    const supabase = createServiceRoleClient();
-
-    const updateData: Record<string, unknown> = {
-        subscription_status: status,
-        updated_at: new Date().toISOString()
-    };
-
-    if (stripeCustomerId) {
-        updateData.stripe_customer_id = stripeCustomerId;
-    }
-
-    const { error } = await supabase
-        .from('profiles')
-        .update(updateData)
-        .eq('id', userId);
-
-    if (error) {
-        console.error('[updateSubscriptionStatus] Error:', error);
-        return { success: false, message: error.message };
-    }
-
-    return { success: true, message: `Subscription status updated to ${status}` };
-}
-
-/**
- * Stripe顧客IDでユーザーIDを検索
- */
-export async function getUserIdByStripeCustomerId(stripeCustomerId: string): Promise<string | null> {
-    const { createServiceRoleClient } = await import('@/utils/supabase/service-role');
-    const supabase = createServiceRoleClient();
-
-    const { data, error } = await supabase
-        .from('profiles')
-        .select('id')
-        .eq('stripe_customer_id', stripeCustomerId)
-        .single();
-
-    if (error || !data) {
-        console.error('[getUserIdByStripeCustomerId] Error:', error);
-        return null;
-    }
-
-    return data.id;
-}
+// 注意: service_role を使う特権処理（updateSubscriptionStatus /
+// getUserIdByStripeCustomerId）は、公開 Server Action 化を避けるため
+// src/lib/subscriptionAdmin.ts へ移動した。決済 Webhook 等の信頼済み
+// サーバー処理からそちらを import して使用すること。

@@ -243,7 +243,10 @@ export async function updateAllSectorData(userId: string): Promise<{ success: bo
         }).filter(Boolean);
 
         if (updates.length > 0) {
-            const { error: updateError } = await supabase
+            // stocks は全ユーザー共通のマスタ。RLSでは authenticated に書き込みを許可していないため、
+            // 認証済みユーザーからの操作でも service_role 経由で更新する。
+            const adminSupabase = createServiceRoleClient();
+            const { error: updateError } = await adminSupabase
                 .from('stocks')
                 .upsert(updates as any, { onConflict: 'code' }); // Sectorを更新
 
