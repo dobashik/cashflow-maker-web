@@ -4,7 +4,7 @@ import { motion, AnimatePresence, Variants } from 'framer-motion';
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { parseRakutenCSV, parseSBICSV, parseAnalysisCSV, loadCSV } from '@/utils/csvParser';
 import { createClient } from '@/utils/supabase/client';
-import { updateAllStockPrices, updateAllSectorData, updateHoldingAnalysisData, saveHoldingsToSupabase, deleteAllHoldings, updateSpecificStockPrices, deleteHoldingsBySource, updateHoldingDividend, getPortfolioHistory, deletePortfolioHistory } from '@/app/actions/stockActions';
+import { updateAllSectorData, updateHoldingAnalysisData, saveHoldingsToSupabase, deleteAllHoldings, deleteHoldingsBySource, updateHoldingDividend, getPortfolioHistory, deletePortfolioHistory } from '@/app/actions/stockActions';
 import type { PortfolioHistory } from '@/app/actions/stockActions';
 import { checkPremiumAccess } from '@/app/actions/subscriptionActions';
 
@@ -167,16 +167,16 @@ export function HoldingsTable({ isSampleMode = false, onDataUpdate, onUpgradeCli
                 // Determine source as array for processing
                 const rowSource = Array.isArray(row.source) ? row.source : (row.source ? [row.source] : []);
 
-                // Stocksマスタのデータを優先使用
-                // row.stocks は配列またはオブジェクト（1対1ならオブジェクトだが、もし定義が配列なら[0]）
-                // 外部キー結合なので、stocksが入ってくる。
+                // 株価はCSVインポート時の値(holdings.price)を正とする。
+                // 証券会社CSVの「現在値」が出力時点の株価であり、最も信頼できるソース。
+                // CSV価格が欠損(0/null)の場合のみ、stocksマスタの価格をフォールバックに使う。
                 const masterPrice = row.stocks?.price;
                 const masterSector = row.stocks?.sector;
 
-                // priceが0やnullの場合はholdingsのデータ(row.price)をフォールバックとして使うか？
-                // 要件は「stocksテーブルのデータを参照して表示」。
-                // もしstocksが未作成（移行ラグなど）の場合はholdingsを使う安全策をとる。
-                const effectivePrice = (masterPrice !== undefined && masterPrice !== null) ? Number(masterPrice) : Number(row.price);
+                const csvPrice = Number(row.price);
+                const effectivePrice = csvPrice > 0
+                    ? csvPrice
+                    : (masterPrice !== undefined && masterPrice !== null ? Number(masterPrice) : 0);
                 const effectiveSector = (masterSector !== undefined && masterSector !== null) ? masterSector : (row.sector || '');
 
                 const item: any = {
@@ -223,24 +223,14 @@ export function HoldingsTable({ isSampleMode = false, onDataUpdate, onUpgradeCli
                     const newMonths = item.dividendMonths || [];
                     const mergedMonths = Array.from(new Set([...existingMonths, ...newMonths])).sort((a, b) => a - b);
 
-                    // Total Gain/Loss Recalculation based on NEW price (master price)
-                    // existing.totalGainLoss + item.totalGainLoss はDB値の単純合算だが、
-                    // priceが変わったので再計算したほうが正確。
-                    // calculation: (Current Price - Avg Acquisition Price) * Total Qty
-                    // しかしここでの `totalGainLoss` はDB保存値。
-                    // 表示用には `(price - acquisitionPrice) * quantity` をリアルタイム計算している箇所が render 内にあるはず。
-                    // 確認: render内 `const totalAssets = stock.quantity * stock.price;` 
-                    // `const gainLoss = stock.totalGainLoss;` -> これはDB値を使っている。
-                    // Master Priceを使うなら、Gain/Lossもここで再計算すべき。
-                    // DBの total_gain_loss は「取得時の計算」や「入稿時の計算」か？ 
-                    // 通常時価評価額 - 取得価額。
+                    // 損益は現在価格(CSV価格)ベースで再計算する: (時価 - 平均取得価額) × 数量
                     const recalcTotalGainLoss = (item.price * totalQty) - (newAvgPrice * totalQty);
 
                     mergedMap.set(item.code, {
                         ...existing,
                         quantity: totalQty,
                         acquisitionPrice: newAvgPrice,
-                        price: item.price, // Master Price
+                        price: item.price, // CSV取込時点の価格
                         totalGainLoss: recalcTotalGainLoss, // Recalculated
                         source: Array.isArray(mergedSource) ? mergedSource.join(', ') : mergedSource,
                         accountType: Array.isArray(mergedAccount) ? mergedAccount.join(', ') : mergedAccount,
@@ -286,11 +276,10 @@ export function HoldingsTable({ isSampleMode = false, onDataUpdate, onUpgradeCli
                 const alreadyUpdated = sessionStorage.getItem(sessionKey);
 
                 if (!alreadyUpdated) {
-                    console.log('[HoldingsTable] Auto-updating stock prices on login...');
+                    console.log('[HoldingsTable] Auto-updating sector data on login...');
                     setIsUpdating(true);
                     try {
-                        const sectorResult = await updateAllSectorData(userId);
-                        const priceResult = await updateAllStockPrices(userId);
+                        await updateAllSectorData(userId);
                         await fetchHoldings();
                         sessionStorage.setItem(sessionKey, 'true');
                     } catch (error) {
@@ -322,6 +311,12 @@ export function HoldingsTable({ isSampleMode = false, onDataUpdate, onUpgradeCli
         () => new Set(holdings.map(item => String(item.code).trim()).filter(Boolean)).size,
         [holdings]
     );
+
+    // 株価の基準日 = 最新のCSV取込のデータ日付（historyはcreated_at降順で取得済み）
+    const priceDataDate = useMemo(() => {
+        const latest = history[0]?.dataDate;
+        return latest ? new Date(latest) : null;
+    }, [history]);
 
     useEffect(() => {
         const storedHistoryId = sessionStorage.getItem('active_portfolio_history_id');
@@ -469,36 +464,6 @@ export function HoldingsTable({ isSampleMode = false, onDataUpdate, onUpgradeCli
         }
     }, [importMode, isAppendMode]);
 
-    // 手動株価更新ハンドラー
-    const handleUpdatePrices = async () => {
-        if (isSampleMode) {
-            alert("この機能を利用するにはログインしてください");
-            return;
-        }
-
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) {
-            alert("セッションが切れました。ログインしてください。");
-            return;
-        }
-
-        setIsUpdating(true);
-        try {
-            // Step 1: 最新株価を取得・更新 (セクター更新は行わない)
-            const priceResult = await updateAllStockPrices(user.id);
-            console.log('[HoldingsTable] Price update:', priceResult.message);
-
-            // Refresh UI
-            await fetchHoldings();
-            alert(`${priceResult.message}`);
-        } catch (error) {
-            console.error('[HoldingsTable] Update error:', error);
-            alert('更新中にエラーが発生しました');
-        } finally {
-            setIsUpdating(false);
-        }
-    };
-
     const handleDeleteAll = async () => {
         if (isSampleMode) return;
         if (!confirm("本当に全てのデータを削除しますか？\nこの操作は取り消せません。")) return;
@@ -606,19 +571,16 @@ export function HoldingsTable({ isSampleMode = false, onDataUpdate, onUpgradeCli
                 void loadHistory();
                 const userId = result.userId;
 
-                // Auto-update
+                // セクター情報の自動補完（株価はCSVの「現在値」をそのまま使用する）
                 if (userId) {
                     setIsUpdating(true); // For the button indicator consistency
 
                     try {
                         const sectorResult = await updateAllSectorData(userId);
-                        // 部分更新に変更: 今回インポートしたコードのみを対象にする
-                        const targetCodes = newHoldings.map(h => h.code);
-                        const priceResult = await updateSpecificStockPrices(userId, targetCodes);
-                        alert(`インポート完了！\n${result.message}\n${sectorResult.message}\n${priceResult.message}`);
+                        alert(`インポート完了！\n${result.message}\n${sectorResult.message}`);
                     } catch (updateError) {
                         console.error('[HoldingsTable] Auto-update error:', updateError);
-                        alert('インポートは完了しましたが、株価更新中にエラーが発生しました');
+                        alert('インポートは完了しましたが、セクター情報の更新中にエラーが発生しました');
                     } finally {
                         setIsUpdating(false);
                     }
@@ -729,18 +691,16 @@ export function HoldingsTable({ isSampleMode = false, onDataUpdate, onUpgradeCli
                 />
 
                 <div className="flex items-center gap-3">
-                    {/* 独立した株価更新ボタン */}
-                    <button
-                        onClick={handleUpdatePrices}
-                        disabled={isUpdating || isSampleMode}
-                        className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${isUpdating || isSampleMode
-                            ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
-                            : 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200'
-                            }`}
-                    >
-                        <RefreshCcw className={`w-4 h-4 ${isUpdating ? 'animate-spin' : ''}`} />
-                        {isUpdating ? '更新中...' : '株価更新'}
-                    </button>
+                    {/* 株価の基準日表示（CSV取込時点の価格） */}
+                    {!isSampleMode && priceDataDate && (
+                        <span
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 text-slate-500 text-xs font-medium"
+                            title="株価はCSVを取り込んだ時点の「現在値」です。最新にするには証券会社のCSVを再度取り込んでください。"
+                        >
+                            <Clock3 className="w-3.5 h-3.5" />
+                            {priceDataDate.toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric' })}時点の株価
+                        </span>
+                    )}
 
                     <DropdownMenu>
                         <DropdownMenuTrigger asChild>
