@@ -48,3 +48,6 @@ credentials/
 # Local SBI deposit/withdrawal sample data
 test-data/*DetailInquiry*.csv
 test-data/*入出金履歴*.csv
+
+# Private research and AI conversation notes
+/参考ファイル/

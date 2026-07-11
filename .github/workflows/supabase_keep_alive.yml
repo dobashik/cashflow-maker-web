@@ -2,9 +2,8 @@ name: Supabase Keep Alive
 
 on:
   schedule:
-    # 3日に1回、日本時間 06:30 (UTC 21:30) に実行
-    # 1日, 4日, 7日... のように3日おきに実行されます
-    - cron: '30 21 */3 * *'
+    # 毎日、日本時間 06:30 (UTC 21:30) に実行
+    - cron: '30 21 * * *'
   workflow_dispatch: # 手動実行ボタンも残しておきます
 
 jobs:
@@ -15,7 +14,7 @@ jobs:
     steps:
       - name: Send Ping to Supabase API
         run: |
-          curl -i -X GET "${{ secrets.SUPABASE_URL }}/rest/v1/holdings?select=id&limit=1" \
+          curl --fail-with-body --retry 3 --max-time 30 -i -X GET "${{ secrets.SUPABASE_URL }}/rest/v1/holdings?select=id&limit=1" \
           -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
           -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}"
 
