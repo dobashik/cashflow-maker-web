@@ -3,7 +3,7 @@ import { CommunityManagerPanel } from '@/components/CommunityManagerPanel';
 import { getMyManagedCommunities } from '@/app/actions/communityActions';
 import { getAccessContext } from '@/lib/communityAccess';
 
-export const runtime = 'nodejs';
+export const runtime = 'edge';
 
 export default async function CommunityAdminPage({
     searchParams,

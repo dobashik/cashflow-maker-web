@@ -92,7 +92,7 @@ export async function beginInvitationRegistration(code: string): Promise<ActionR
     }
 
     const admin = createServiceRoleClient();
-    const codeHash = hashInviteCode(normalizedCode);
+    const codeHash = await hashInviteCode(normalizedCode);
     const { data, error } = await admin
         .from('community_invite_codes')
         .select('kind, is_active, expires_at, max_uses, use_count, communities(name, status)')
@@ -190,7 +190,7 @@ export async function createCommunity(input: {
                 community_id: community.id,
                 kind: 'admin',
                 code_value: adminInviteCode,
-                code_hash: hashInviteCode(adminInviteCode),
+                code_hash: await hashInviteCode(adminInviteCode),
                 target_email: representativeEmail,
                 max_uses: 1,
                 expires_at: inviteExpiresAt,
@@ -201,7 +201,7 @@ export async function createCommunity(input: {
                 community_id: community.id,
                 kind: 'member',
                 code_value: memberInviteCode,
-                code_hash: hashInviteCode(memberInviteCode),
+                code_hash: await hashInviteCode(memberInviteCode),
                 max_uses: maxMembers - 1,
                 is_active: false,
                 created_by: user.id,
@@ -497,7 +497,7 @@ export async function rotateMemberInviteCode(communityId: string): Promise<Actio
         community_id: communityId,
         kind: 'member',
         code_value: code,
-        code_hash: hashInviteCode(code),
+        code_hash: await hashInviteCode(code),
         max_uses: Math.max(1, community.max_members - 1),
         expires_at: community.access_expires_at,
         is_active: ['poc', 'active'].includes(community.status),

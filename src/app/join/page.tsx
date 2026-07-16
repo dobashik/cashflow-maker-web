@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation';
 import { JoinCommunityForm } from '@/components/JoinCommunityForm';
 import { getAccessContext } from '@/lib/communityAccess';
 
-export const runtime = 'nodejs';
+export const runtime = 'edge';
 
 export default async function JoinPage() {
     const access = await getAccessContext();

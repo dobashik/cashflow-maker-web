@@ -1,5 +1,3 @@
-import { createHash, randomBytes } from 'node:crypto';
-
 export type InviteKind = 'admin' | 'member';
 
 export function normalizeEmail(email: string): string {
@@ -27,10 +25,15 @@ export function makeCodePrefix(communityName: string): string {
 }
 
 export function generateInviteCode(prefix: string, kind: InviteKind): string {
-    const randomPart = randomBytes(10).toString('hex').toUpperCase();
+    const randomBytes = crypto.getRandomValues(new Uint8Array(10));
+    const randomPart = Array.from(randomBytes, (value) => value.toString(16).padStart(2, '0')).join('').toUpperCase();
     return `CFM-${prefix}-${kind === 'admin' ? 'ADMIN' : 'MEMBER'}-${randomPart}`;
 }
 
-export function hashInviteCode(code: string): string {
-    return createHash('sha256').update(code.trim().toUpperCase()).digest('hex');
+export async function hashInviteCode(code: string): Promise<string> {
+    const digest = await crypto.subtle.digest(
+        'SHA-256',
+        new TextEncoder().encode(code.trim().toUpperCase()),
+    );
+    return Array.from(new Uint8Array(digest), (value) => value.toString(16).padStart(2, '0')).join('');
 }

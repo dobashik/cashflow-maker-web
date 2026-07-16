@@ -4,7 +4,7 @@ import { createClient } from "@/utils/supabase/server";
 import { bootstrapConfiguredOwner } from "@/lib/communityAccess";
 import { claimPendingInvitation } from "@/app/actions/communityActions";
 
-export const runtime = "nodejs";
+export const runtime = "edge";
 
 /**
  * リダイレクト先パスのサニタイズ（オープンリダイレクト防止）

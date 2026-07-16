@@ -3,7 +3,7 @@ import { OwnerAdminPanel } from '@/components/OwnerAdminPanel';
 import { getOwnerCommunities } from '@/app/actions/communityActions';
 import { getAccessContext } from '@/lib/communityAccess';
 
-export const runtime = 'nodejs';
+export const runtime = 'edge';
 
 export default async function AdminPage() {
     const access = await getAccessContext();

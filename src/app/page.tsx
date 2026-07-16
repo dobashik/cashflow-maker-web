@@ -4,7 +4,7 @@ import { SampleDashboard } from "@/components/SampleDashboard";
 import { AccessPending } from "@/components/AccessPending";
 import { getAccessContext } from "@/lib/communityAccess";
 
-export const runtime = "nodejs";
+export const runtime = "edge";
 
 export default async function Home() {
   const supabase = await createClient();
