@@ -24,6 +24,49 @@ const SECTOR_MASTER_LIST = [
     '素材・化学', '機械', '電機・精密', '自動車・輸送機', '銀行'
 ];
 
+// 証券会社CSVや既存DBに残る東証33業種を、画面で使う17業種へ正規化する。
+// すでに17業種で保存されている値はそのまま使う。
+const SECTOR_33_TO_17: Record<string, string> = {
+    '食料品': '食品',
+    '医薬品': '医薬品',
+    '情報・通信業': '情報通信・サービスその他',
+    'サービス業': '情報通信・サービスその他',
+    '陸運業': '運輸・物流',
+    '海運業': '運輸・物流',
+    '空運業': '運輸・物流',
+    '倉庫・運輸関連業': '運輸・物流',
+    '建設業': '建設・資材',
+    'ガラス・土石製品': '建設・資材',
+    '金属製品': '建設・資材',
+    '小売業': '小売',
+    '不動産業': '不動産',
+    '鉄鋼': '鉄鋼・非鉄',
+    '非鉄金属': '鉄鋼・非鉄',
+    '鉱業': 'エネルギー資源',
+    '石油・石炭製品': 'エネルギー資源',
+    '卸売業': '商社・卸売',
+    '証券・商品先物取引業': '金融（除く銀行）',
+    '保険業': '金融（除く銀行）',
+    'その他金融業': '金融（除く銀行）',
+    '電気・ガス業': '電力・ガス',
+    '繊維製品': '素材・化学',
+    'パルプ・紙': '素材・化学',
+    '化学': '素材・化学',
+    'ゴム製品': '素材・化学',
+    '機械': '機械',
+    '電気機器': '電機・精密',
+    '精密機器': '電機・精密',
+    'その他製品': '電機・精密',
+    '輸送用機器': '自動車・輸送機',
+    '銀行業': '銀行',
+};
+
+const normalizeSector = (sector?: string | null) => {
+    const value = String(sector ?? '').trim();
+    if (SECTOR_MASTER_LIST.includes(value)) return value;
+    return SECTOR_33_TO_17[value] ?? 'その他';
+};
+
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d', '#ffc658', '#8dd1e1'];
 
 type SectorSummary = {
@@ -78,10 +121,10 @@ export function PortfolioPie({ holdings = [], onUpgradeClick, isSampleMode = fal
         const sectorCalc = new Map<string, { value: number; count: number }>();
 
         aggregatedHoldings.forEach(item => {
-            const sector = item.sector || 'その他';
+            const sector = normalizeSector(item.sector);
             const value = (item.price || 0) * (item.quantity || 0);
 
-            const key = SECTOR_MASTER_LIST.includes(sector) ? sector : 'その他';
+            const key = sector;
             const current = sectorCalc.get(key) || { value: 0, count: 0 };
 
             sectorCalc.set(key, {
@@ -147,7 +190,7 @@ export function PortfolioPie({ holdings = [], onUpgradeClick, isSampleMode = fal
     const selectedOwnedHoldings = useMemo(
         () => aggregatedHoldings
             .filter(item => {
-                const normalizedSector = SECTOR_MASTER_LIST.includes(item.sector) ? item.sector : 'その他';
+                const normalizedSector = normalizeSector(item.sector);
                 return normalizedSector === ownedSector;
             })
             .sort((a, b) => a.code.localeCompare(b.code, 'ja', { numeric: true })),

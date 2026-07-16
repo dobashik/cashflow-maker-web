@@ -108,16 +108,16 @@ export const TOTAL_DIVIDENDS_ANNUAL = HOLDINGS.reduce((sum, item) => sum + (item
 export const MONTHLY_DIVIDEND = Math.floor(TOTAL_DIVIDENDS_ANNUAL / 12);
 
 export const MONTHLY_DIVIDENDS_DATA = [
-    { month: '1月', amount: 12000 },
-    { month: '2月', amount: 35000 },
-    { month: '3月', amount: 158000 }, // March often high
-    { month: '4月', amount: 15000 },
-    { month: '5月', amount: 42000 },
-    { month: '6月', amount: 180000 }, // June often high
-    { month: '7月', amount: 22000 },
-    { month: '8月', amount: 38000 },
-    { month: '9月', amount: 165000 }, // Sept often high
-    { month: '10月', amount: 18000 },
-    { month: '11月', amount: 25000 },
-    { month: '12月', amount: 175000 }, // Dec often high
+    { month: '1月', amount: 63500 },
+    { month: '2月', amount: 81200 },
+    { month: '3月', amount: 288400 },
+    { month: '4月', amount: 54000 },
+    { month: '5月', amount: 110900 },
+    { month: '6月', amount: 336200 },
+    { month: '7月', amount: 48000 },
+    { month: '8月', amount: 76300 },
+    { month: '9月', amount: 220400 },
+    { month: '10月', amount: 49200 },
+    { month: '11月', amount: 82600 },
+    { month: '12月', amount: 305000 },
 ];

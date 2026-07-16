@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { X, Loader2 } from "lucide-react";
 import { createClient } from "@/utils/supabase/client";
 import { GoogleIcon } from "@/components/ui/icons";
+import Link from "next/link";
 
 type AuthModalProps = {
     isOpen: boolean;
@@ -62,11 +63,11 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
                             <div className="text-center space-y-6">
                                 <div>
                                     <h2 className="text-xl font-bold text-gray-900 mb-2">
-                                        ログイン / 新規登録
+                                        Googleでログイン
                                     </h2>
                                     <p className="text-sm text-gray-500 text-balance">
-                                        Googleアカウントを使って、<br />
-                                        安全かつ簡単にログインできます。
+                                        登録済みのGoogleアカウントで<br />
+                                        ログインしてください。
                                     </p>
                                 </div>
 
@@ -82,6 +83,16 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
                                     )}
                                     <span>Googleでログイン</span>
                                 </button>
+                                <div className="border-t border-slate-200 pt-5">
+                                    <p className="mb-3 text-xs text-slate-500">初めて利用する方</p>
+                                    <Link
+                                        href="/join"
+                                        onClick={onClose}
+                                        className="block w-full rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm font-bold text-indigo-700 transition hover:bg-indigo-100"
+                                    >
+                                        招待コードを入力して登録
+                                    </Link>
+                                </div>
                             </div>
                         </motion.div>
                     </motion.div>
@@ -90,4 +101,3 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
         </AnimatePresence>
     );
 }
-

@@ -11,6 +11,7 @@ import {
     updateDividendPaymentProcessed,
 } from '@/app/actions/dividendActions';
 import type { DividendDashboardData, DividendImportBatch, DividendPayment, DividendSummary } from '@/app/actions/dividendActions';
+import { MONTHLY_DIVIDENDS_DATA, TOTAL_DIVIDENDS_ANNUAL } from '@/lib/mockData';
 
 type MonthlyDividend = {
     month: string;
@@ -42,6 +43,66 @@ const emptyDashboardData: DividendDashboardData = {
     summary: emptySummary,
 };
 
+const SAMPLE_STOCK_NAMES = [
+    'KDDI', '三菱商事', '三井住友FG', '日本たばこ産業', 'オリックス', '東京海上HD',
+    '積水ハウス', '武田薬品工業', '商船三井', 'INPEX', 'キヤノン', 'ヒューリック',
+];
+
+function createSampleDashboardData(year: number): DividendDashboardData {
+    const payments: DividendPayment[] = MONTHLY_DIVIDENDS_DATA.flatMap((item, index) => {
+        const month = index + 1;
+        const firstAmount = Math.round(item.amount * 0.62);
+        const secondAmount = item.amount - firstAmount;
+        const dayA = String(Math.min(12, 4 + (index % 8))).padStart(2, '0');
+        const dayB = String(Math.min(26, 18 + (index % 7))).padStart(2, '0');
+        const base = `${year}-${String(month).padStart(2, '0')}`;
+
+        return [
+            {
+                id: `sample-payment-${month}-a`,
+                batchId: 'sample-sbi-batch',
+                broker: 'SBI' as const,
+                paymentDate: `${base}-${dayA}`,
+                stockName: SAMPLE_STOCK_NAMES[index],
+                amount: firstAmount,
+                taxCategory: index % 3 === 0 ? 'NISA' as const : 'Taxable' as const,
+                isProcessed: index < 8,
+                processedAt: index < 8 ? `${base}-${dayA}T12:00:00.000Z` : null,
+                processedNote: null,
+                createdAt: `${base}-${dayA}T03:00:00.000Z`,
+            },
+            {
+                id: `sample-payment-${month}-b`,
+                batchId: 'sample-sbi-batch',
+                broker: 'SBI' as const,
+                paymentDate: `${base}-${dayB}`,
+                stockName: SAMPLE_STOCK_NAMES[(index + 4) % SAMPLE_STOCK_NAMES.length],
+                amount: secondAmount,
+                taxCategory: index % 4 === 0 ? 'NISA' as const : 'Taxable' as const,
+                isProcessed: index < 8,
+                processedAt: index < 8 ? `${base}-${dayB}T12:00:00.000Z` : null,
+                processedNote: null,
+                createdAt: `${base}-${dayB}T03:00:00.000Z`,
+            },
+        ];
+    });
+
+    return {
+        payments,
+        batches: [{
+            id: 'sample-sbi-batch',
+            broker: 'SBI',
+            fileName: `SBI入出金明細_${year}年サンプル.csv`,
+            importedCount: payments.length,
+            skippedDuplicateCount: 2,
+            paymentStartDate: `${year}-01-01`,
+            paymentEndDate: `${year}-12-31`,
+            createdAt: `${year}-07-01T03:00:00.000Z`,
+        }],
+        summary: buildClientSummary(payments, year),
+    };
+}
+
 const formatYen = (amount: number) => `¥${Math.round(amount).toLocaleString()}`;
 const INITIAL_PAYMENT_ROWS = 15;
 
@@ -53,7 +114,9 @@ const taxLabel = (taxCategory: DividendPayment['taxCategory']) => {
 
 export function DividendHistory({ isSampleMode = false, onMonthlyDataUpdate, onAnnualDataUpdate }: DividendHistoryProps) {
     const fileInputRef = useRef<HTMLInputElement | null>(null);
-    const [dashboardData, setDashboardData] = useState<DividendDashboardData>(emptyDashboardData);
+    const [dashboardData, setDashboardData] = useState<DividendDashboardData>(() => (
+        isSampleMode ? createSampleDashboardData(new Date().getFullYear()) : emptyDashboardData
+    ));
     const [isLoading, setIsLoading] = useState(false);
     const [isImporting, setIsImporting] = useState(false);
     const [error, setError] = useState('');
@@ -86,16 +149,29 @@ export function DividendHistory({ isSampleMode = false, onMonthlyDataUpdate, onA
     }, [loadData]);
 
     useEffect(() => {
+        if (!isSampleMode) return;
+        setDashboardData(createSampleDashboardData(selectedYear));
+    }, [isSampleMode, selectedYear]);
+
+    useEffect(() => {
         if (!onMonthlyDataUpdate) return;
+        if (isSampleMode) {
+            onMonthlyDataUpdate(MONTHLY_DIVIDENDS_DATA);
+            return;
+        }
         onMonthlyDataUpdate(buildRollingDividendCalendarData(dashboardData.payments));
-    }, [dashboardData.payments, onMonthlyDataUpdate]);
+    }, [dashboardData.payments, isSampleMode, onMonthlyDataUpdate]);
 
     useEffect(() => {
         if (!onAnnualDataUpdate) return;
+        if (isSampleMode) {
+            onAnnualDataUpdate(TOTAL_DIVIDENDS_ANNUAL, selectedYear);
+            return;
+        }
         const rollingAnnualAmount = buildRollingDividendCalendarData(dashboardData.payments)
             .reduce((sum, item) => sum + item.amount, 0);
         onAnnualDataUpdate(rollingAnnualAmount, new Date().getFullYear());
-    }, [dashboardData.payments, onAnnualDataUpdate]);
+    }, [dashboardData.payments, isSampleMode, onAnnualDataUpdate, selectedYear]);
 
     const visiblePayments = useMemo(
         () => dashboardData.payments.filter(payment => showProcessed || !payment.isProcessed),
@@ -138,6 +214,7 @@ export function DividendHistory({ isSampleMode = false, onMonthlyDataUpdate, onA
     };
 
     const handleToggleProcessed = async (payment: DividendPayment) => {
+        if (isSampleMode) return;
         setError('');
         setMessage('');
 
@@ -161,6 +238,7 @@ export function DividendHistory({ isSampleMode = false, onMonthlyDataUpdate, onA
     };
 
     const handleDeleteBatch = async (batch: DividendImportBatch) => {
+        if (isSampleMode) return;
         const label = batch.fileName || new Date(batch.createdAt).toLocaleString('ja-JP');
         if (!confirm(`${label} のインポート履歴を削除しますか？\n関連する配当金履歴も削除されます。`)) return;
 
@@ -176,6 +254,7 @@ export function DividendHistory({ isSampleMode = false, onMonthlyDataUpdate, onA
     };
 
     const handleBulkProcessUntil = async () => {
+        if (isSampleMode) return;
         if (!bulkProcessedUntil) {
             setError('処理済みにする基準日を指定してください');
             return;
@@ -204,8 +283,6 @@ export function DividendHistory({ isSampleMode = false, onMonthlyDataUpdate, onA
         void loadData(year);
     };
 
-    if (isSampleMode) return null;
-
     return (
         <div className="bg-white rounded-2xl p-6 shadow-sm border border-indigo-50 w-full">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -231,7 +308,7 @@ export function DividendHistory({ isSampleMode = false, onMonthlyDataUpdate, onA
                     <button
                         type="button"
                         onClick={() => void loadData(selectedYear)}
-                        disabled={isLoading || isImporting}
+                        disabled={isSampleMode || isLoading || isImporting}
                         className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                         <RefreshCcw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
@@ -240,11 +317,11 @@ export function DividendHistory({ isSampleMode = false, onMonthlyDataUpdate, onA
                     <button
                         type="button"
                         onClick={() => fileInputRef.current?.click()}
-                        disabled={isImporting}
+                        disabled={isSampleMode || isImporting}
                         className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-3 py-2 text-sm font-bold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                         <UploadCloud className="h-4 w-4" />
-                        SBI入出金CSVを取り込む
+                        {isSampleMode ? 'ログイン後にSBI入出金CSVを取り込む' : 'SBI入出金CSVを取り込む'}
                     </button>
                     <input
                         ref={fileInputRef}
@@ -259,6 +336,11 @@ export function DividendHistory({ isSampleMode = false, onMonthlyDataUpdate, onA
             <p className="mt-4 text-xs text-slate-500">
                 SBI証券の入出金明細から「入金」かつ「利金・配当金」だけを保存します。CSV本文は保存せず、期間が重なって同じ配当が含まれる場合は重複としてスキップします。
             </p>
+            {isSampleMode && (
+                <div className="mt-3 rounded-xl border border-indigo-100 bg-indigo-50 px-4 py-3 text-sm font-bold text-indigo-700">
+                    サンプル表示：SBI入出金CSVの取込後に表示される、配当金・処理状況・インポート履歴の例です。
+                </div>
+            )}
 
             <div className="mt-5 rounded-2xl border border-emerald-100 bg-gradient-to-r from-emerald-50 via-cyan-50 to-indigo-50 p-4">
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -281,7 +363,7 @@ export function DividendHistory({ isSampleMode = false, onMonthlyDataUpdate, onA
                         <button
                             type="button"
                             onClick={() => void handleBulkProcessUntil()}
-                            disabled={isBulkProcessing || isLoading}
+                            disabled={isSampleMode || isBulkProcessing || isLoading}
                             className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-bold text-white shadow-sm hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
                         >
                             <CheckCircle2 className="h-4 w-4" />
@@ -298,7 +380,7 @@ export function DividendHistory({ isSampleMode = false, onMonthlyDataUpdate, onA
             )}
 
             <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-3">
-                <SummaryCard label={`${dashboardData.summary.year}年の実績配当`} value={formatYen(dashboardData.summary.monthlyTotals.reduce((sum, item) => sum + item.amount, 0))} />
+                <SummaryCard label={`${dashboardData.summary.year}年の${isSampleMode ? 'サンプル配当' : '実績配当'}`} value={formatYen(dashboardData.summary.monthlyTotals.reduce((sum, item) => sum + item.amount, 0))} />
                 <SummaryCard label="処理済み" value={formatYen(dashboardData.summary.processedAmount)} sub={`${dashboardData.summary.processedCount}件`} tone="emerald" />
                 <SummaryCard label="未処理" value={formatYen(dashboardData.summary.unprocessedAmount)} sub={`${dashboardData.summary.unprocessedCount}件`} tone="amber" />
             </div>
@@ -355,6 +437,7 @@ export function DividendHistory({ isSampleMode = false, onMonthlyDataUpdate, onA
                                             <button
                                                 type="button"
                                                 onClick={() => void handleToggleProcessed(payment)}
+                                                disabled={isSampleMode}
                                                 className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold transition-colors ${payment.isProcessed
                                                     ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
                                                     : 'bg-amber-100 text-amber-700 hover:bg-amber-200'
@@ -414,6 +497,7 @@ export function DividendHistory({ isSampleMode = false, onMonthlyDataUpdate, onA
                                     <button
                                         type="button"
                                         onClick={() => void handleDeleteBatch(batch)}
+                                        disabled={isSampleMode}
                                         className="rounded-lg p-1.5 text-slate-300 hover:bg-rose-50 hover:text-rose-600"
                                         title="このインポート履歴を削除"
                                     >

@@ -9,6 +9,7 @@
  */
 
 import { createClient } from '@/utils/supabase/server';
+import { getAccessContext } from '@/lib/communityAccess';
 
 export type SubscriptionStatus = 'active' | 'inactive' | 'canceled' | 'past_due' | 'trialing';
 
@@ -78,98 +79,33 @@ export async function calculateTrialDaysRemaining(trialEndsAt: string | null): P
  * 3. サブスクリプションがアクティブ
  */
 export async function checkPremiumAccess(): Promise<AccessCheckResult> {
-    const profile = await getUserProfile();
+    const [profile, access] = await Promise.all([getUserProfile(), getAccessContext()]);
 
-    // ===== ベータ期間中: 全ログインユーザーにアクセスを許可 =====
-    // 決済機能復旧時にこのブロックを削除し、下のコメントアウトを解除すれば元の判定ロジックに戻る
-    if (profile) {
-        return {
-            hasAccess: true,
-            reason: 'vip',
-            trialDaysRemaining: null,
-            isVip: false,
-            subscriptionStatus: profile.subscription_status as SubscriptionStatus
-        };
-    }
-    // 未ログインの場合
-    return {
-        hasAccess: false,
-        reason: 'no_access',
-        trialDaysRemaining: null,
-        isVip: false,
-        subscriptionStatus: 'inactive'
-    };
-    // ===== ベータ期間ここまで =====
-
-    /* === 決済機能復旧時に有効化する判定ロジック ===
-
-    // プロフィールがない場合（未ログインまたはエラー）
-    if (!profile) {
-        return {
-            hasAccess: false,
-            reason: 'no_access',
-            trialDaysRemaining: null,
-            isVip: false,
-            subscriptionStatus: 'inactive'
-        };
-    }
-
-    // 1. VIPチェック（最優先）
-    if (profile.is_vip) {
+    if (access.isPlatformOwner) {
         return {
             hasAccess: true,
             reason: 'vip',
             trialDaysRemaining: null,
             isVip: true,
-            subscriptionStatus: profile.subscription_status as SubscriptionStatus
+            subscriptionStatus: (profile?.subscription_status as SubscriptionStatus | undefined) ?? 'active'
         };
     }
-
-    // 2. サブスクリプションがアクティブ（有料契約中）かチェック
-    // ※ trialingは無料トライアル期間中なので、ここではactiveのみ
-    if (profile.subscription_status === 'active') {
+    if (access.hasAccess) {
         return {
             hasAccess: true,
             reason: 'subscribed',
             trialDaysRemaining: null,
             isVip: false,
-            subscriptionStatus: profile.subscription_status as SubscriptionStatus
+            subscriptionStatus: 'active'
         };
     }
-
-    // 3. トライアル期間チェック（subscription_status が trialing の場合も含む）
-    const trialDaysRemaining = await calculateTrialDaysRemaining(profile.trial_ends_at);
-    if (trialDaysRemaining !== null && trialDaysRemaining > 0) {
-        return {
-            hasAccess: true,
-            reason: 'trial',
-            trialDaysRemaining,
-            isVip: false,
-            subscriptionStatus: profile.subscription_status as SubscriptionStatus
-        };
-    }
-
-    // 4. キャンセル済みの場合は再登録を促す
-    if (profile.subscription_status === 'canceled') {
-        return {
-            hasAccess: false,
-            reason: 'canceled',
-            trialDaysRemaining: 0,
-            isVip: false,
-            subscriptionStatus: 'canceled'
-        };
-    }
-
-    // どの条件にも当てはまらない = アクセス不可
     return {
         hasAccess: false,
         reason: 'no_access',
         trialDaysRemaining: 0,
         isVip: false,
-        subscriptionStatus: profile.subscription_status as SubscriptionStatus
+        subscriptionStatus: (profile?.subscription_status as SubscriptionStatus | undefined) ?? 'inactive'
     };
-
-    === 決済機能復旧時に有効化する判定ロジック ここまで === */
 }
 
 // 注意: service_role を使う特権処理（updateSubscriptionStatus /

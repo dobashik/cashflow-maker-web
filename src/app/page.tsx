@@ -1,15 +1,20 @@
 import { createClient } from "@/utils/supabase/server";
 import { Dashboard } from "@/components/Dashboard";
 import { SampleDashboard } from "@/components/SampleDashboard";
+import { AccessPending } from "@/components/AccessPending";
+import { getAccessContext } from "@/lib/communityAccess";
 
-export const runtime = "edge";
+export const runtime = "nodejs";
 
 export default async function Home() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
   if (user) {
-    // Logged-in view: Render Dashboard directly (includes Header and state)
+    const access = await getAccessContext(user);
+    if (!access.hasAccess) {
+      return <AccessPending />;
+    }
     return <Dashboard />;
   }
 

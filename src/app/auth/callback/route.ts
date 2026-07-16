@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 // The client you created from the Server-Side Auth instructions
 import { createClient } from "@/utils/supabase/server";
+import { bootstrapConfiguredOwner } from "@/lib/communityAccess";
+import { claimPendingInvitation } from "@/app/actions/communityActions";
 
-export const runtime = "edge";
+export const runtime = "nodejs";
 
 /**
  * リダイレクト先パスのサニタイズ（オープンリダイレクト防止）
@@ -29,6 +31,14 @@ export async function GET(request: Request) {
     const supabase = await createClient();
     const { error } = await supabase.auth.exchangeCodeForSession(code);
     if (!error) {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        await bootstrapConfiguredOwner(user);
+        const invitationResult = await claimPendingInvitation(user.id, user.email ?? '');
+        if (!invitationResult.success && invitationResult.message !== '招待情報がありません') {
+          return NextResponse.redirect(`${origin}/access-pending?message=${encodeURIComponent(invitationResult.message)}`);
+        }
+      }
       const forwardedHost = request.headers.get("x-forwarded-host"); // original origin before load balancer
       const isLocalEnv = process.env.NODE_ENV === "development";
       if (isLocalEnv) {

@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Castle, User as UserIcon, LogOut, ChevronDown } from 'lucide-react';
+import { Castle, LogOut, ChevronDown, Settings, Users } from 'lucide-react';
 import { createClient } from '@/utils/supabase/client';
 import { type User } from '@supabase/supabase-js';
 import { AuthModal } from './AuthModal';
+import { getMyAccessContext } from '@/app/actions/communityActions';
 
 type HeaderProps = {
     onRefreshAnimations?: () => void;
@@ -18,10 +19,10 @@ export function Header({ onRefreshAnimations }: HeaderProps) {
     const [isModalOpen, setIsModalOpen] = useState(false);
 
     const [user, setUser] = useState<User | null>(null);
-    const [isMenuOpen, setIsMenuOpen] = useState(false); // For mobile menu if needed, or dropdown for user
     const [isUserMenuOpen, setIsUserMenuOpen] = useState(false); // ユーザードロップダウンメニュー
+    const [accessLinks, setAccessLinks] = useState({ isOwner: false, isCommunityAdmin: false });
 
-    const supabase = createClient();
+    const supabase = useMemo(() => createClient(), []);
 
     useEffect(() => {
         const handleScroll = () => {
@@ -33,6 +34,13 @@ export function Header({ onRefreshAnimations }: HeaderProps) {
         const getUser = async () => {
             const { data: { user } } = await supabase.auth.getUser();
             setUser(user);
+            if (user) {
+                const access = await getMyAccessContext();
+                setAccessLinks({
+                    isOwner: access.isPlatformOwner,
+                    isCommunityAdmin: access.memberships.some((membership) => membership.role === 'admin' && membership.status === 'active'),
+                });
+            }
         };
         getUser();
 
@@ -45,7 +53,7 @@ export function Header({ onRefreshAnimations }: HeaderProps) {
             window.removeEventListener('scroll', handleScroll);
             subscription.unsubscribe();
         };
-    }, []);
+    }, [supabase]);
 
     const handleClick = (e: React.MouseEvent<HTMLAnchorElement>, id: string) => {
         e.preventDefault();
@@ -181,6 +189,26 @@ export function Header({ onRefreshAnimations }: HeaderProps) {
 
                                             {/* メニュー項目 */}
                                             <div className="py-1">
+                                                {accessLinks.isOwner && (
+                                                    <Link
+                                                        href="/admin"
+                                                        onClick={() => setIsUserMenuOpen(false)}
+                                                        className="flex w-full items-center gap-3 px-4 py-2.5 text-sm text-indigo-700 transition-colors hover:bg-indigo-50"
+                                                    >
+                                                        <Settings className="w-4 h-4" />
+                                                        全体管理
+                                                    </Link>
+                                                )}
+                                                {(accessLinks.isOwner || accessLinks.isCommunityAdmin) && (
+                                                    <Link
+                                                        href="/community-admin"
+                                                        onClick={() => setIsUserMenuOpen(false)}
+                                                        className="flex w-full items-center gap-3 px-4 py-2.5 text-sm text-indigo-700 transition-colors hover:bg-indigo-50"
+                                                    >
+                                                        <Users className="w-4 h-4" />
+                                                        会員管理
+                                                    </Link>
+                                                )}
                                                 <button
                                                     onClick={handleLogout}
                                                     className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors"

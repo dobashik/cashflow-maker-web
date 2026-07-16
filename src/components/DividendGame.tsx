@@ -11,6 +11,7 @@ import type { ExpenseItem } from '@/lib/expenseData';
 type DividendGameProps = {
     annualDividendAmount?: number;
     dividendYear?: number;
+    isSampleMode?: boolean;
 };
 
 const COLORS = ['bg-rose-400', 'bg-orange-400', 'bg-yellow-400', 'bg-green-400', 'bg-pink-400', 'bg-purple-400', 'bg-cyan-400', 'bg-indigo-400'];
@@ -26,7 +27,7 @@ const toDraftItems = (items: ExpenseItem[]): DraftExpenseItem[] => items.map((it
 
 const toExpenseItems = (items: DraftExpenseItem[]): ExpenseItem[] => items.map(({ clientId: _clientId, ...item }) => item);
 
-export function DividendGame({ annualDividendAmount = 0 }: DividendGameProps) {
+export function DividendGame({ annualDividendAmount = 0, isSampleMode = false }: DividendGameProps) {
     const [expenseItems, setExpenseItems] = useState<ExpenseItem[]>(DEFAULT_EXPENSE_ITEMS);
     const [draftItems, setDraftItems] = useState<DraftExpenseItem[]>(() => toDraftItems(DEFAULT_EXPENSE_ITEMS));
     const [isEditing, setIsEditing] = useState(false);
@@ -253,7 +254,9 @@ export function DividendGame({ annualDividendAmount = 0 }: DividendGameProps) {
                     <div className="mt-6 text-center">
                         <div className="text-xs text-indigo-400 font-bold tracking-wider mb-1">ひと月あたりの配当収入</div>
                         <div className="text-3xl font-black text-indigo-700">¥{monthlyDividend.toLocaleString()}</div>
-                        <div className="mt-1 text-xs font-bold text-slate-400">直近1年ベースの配当金総額 ÷ 12ヶ月</div>
+                        <div className="mt-1 text-xs font-bold text-slate-400">
+                            {isSampleMode ? 'サンプル保有銘柄の年間配当見込額 ÷ 12ヶ月' : '直近1年ベースの配当金総額 ÷ 12ヶ月'}
+                        </div>
                     </div>
                 </div>
             </div>

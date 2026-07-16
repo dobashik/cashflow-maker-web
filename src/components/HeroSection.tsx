@@ -70,7 +70,7 @@ export function HeroSection() {
                         className="inline-flex items-center gap-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-bold py-4 px-8 rounded-full shadow-lg shadow-indigo-500/30 text-lg hover:shadow-indigo-500/50 transition-all"
                     >
                         <Sparkles className="w-5 h-5" />
-                        無料でポートフォリオを作成
+                        登録済みアカウントでログイン
                     </motion.button>
                 </motion.div>
             </div>

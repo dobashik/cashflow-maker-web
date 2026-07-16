@@ -11,7 +11,7 @@ import { DividendHistory } from '@/components/DividendHistory';
 import { BetaNoticeBanner } from '@/components/BetaNoticeBanner';
 import { Footer } from '@/components/Footer';
 
-import { Holding } from '@/lib/mockData';
+import { MONTHLY_DIVIDENDS_DATA, TOTAL_DIVIDENDS_ANNUAL, Holding } from '@/lib/mockData';
 
 type MonthlyDividend = {
     month: string;
@@ -37,8 +37,9 @@ export function DashboardContent({ animationKey = 0, isSampleMode = false }: { a
                     transition={{ duration: 0.6 }}
                 >
                     <DividendGame
-                        annualDividendAmount={actualAnnualDividend}
+                        annualDividendAmount={isSampleMode ? TOTAL_DIVIDENDS_ANNUAL : actualAnnualDividend}
                         dividendYear={dividendYear}
+                        isSampleMode={isSampleMode}
                     />
                 </motion.div>
             </section>
@@ -105,7 +106,7 @@ export function DashboardContent({ animationKey = 0, isSampleMode = false }: { a
                 >
                     <DividendCalendar
                         isSampleMode={isSampleMode}
-                        monthlyData={actualMonthlyDividends}
+                        monthlyData={isSampleMode ? MONTHLY_DIVIDENDS_DATA : actualMonthlyDividends}
                     />
                 </motion.div>
             </section>
