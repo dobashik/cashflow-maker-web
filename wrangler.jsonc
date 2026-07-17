@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "cashflow-maker-web",
+  "name": "cashflow-maker-web-worker",
   "main": ".open-next/worker.js",
   "compatibility_date": "2026-07-17",
   "compatibility_flags": ["nodejs_compat"],
