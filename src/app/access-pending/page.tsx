@@ -1,7 +1,5 @@
 import { AccessPending } from '@/components/AccessPending';
 
-export const runtime = 'edge';
-
 export default async function AccessPendingPage({
     searchParams,
 }: {

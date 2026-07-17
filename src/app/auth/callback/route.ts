@@ -4,8 +4,6 @@ import { createClient } from "@/utils/supabase/server";
 import { bootstrapConfiguredOwner } from "@/lib/communityAccess";
 import { claimPendingInvitation } from "@/app/actions/communityActions";
 
-export const runtime = "edge";
-
 /**
  * リダイレクト先パスのサニタイズ（オープンリダイレクト防止）
  * 外部URLや protocol-relative URL を拒否し、相対パスのみ許可する
