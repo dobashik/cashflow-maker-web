@@ -50,6 +50,10 @@ export type ManagedCommunity = {
     activeCount: number;
     invitedCount: number;
     representativeEmail: string | null;
+    representativeInviteCode: string | null;
+    representativeInviteActive: boolean;
+    representativeInviteExpiresAt: string | null;
+    representativeInviteUseCount: number;
     memberInviteCode: string | null;
     memberInviteActive: boolean;
     members?: ManagedMember[];
@@ -236,7 +240,7 @@ async function loadManagedCommunities(communityIds?: string[]): Promise<ManagedC
     if (error) throw new Error(error.message);
 
     return Promise.all((communities ?? []).map(async (community) => {
-        const [{ data: members }, { data: code }] = await Promise.all([
+        const [{ data: members }, { data: memberCode }, { data: representativeCode }] = await Promise.all([
             admin
                 .from('community_members')
                 .select('id, email, role, status, access_expires_at, joined_at, last_seen_at, delete_after')
@@ -248,6 +252,14 @@ async function loadManagedCommunities(communityIds?: string[]): Promise<ManagedC
                 .select('code_value, is_active')
                 .eq('community_id', community.id)
                 .eq('kind', 'member')
+                .order('created_at', { ascending: false })
+                .limit(1)
+                .maybeSingle(),
+            admin
+                .from('community_invite_codes')
+                .select('code_value, is_active, expires_at, use_count')
+                .eq('community_id', community.id)
+                .eq('kind', 'admin')
                 .order('created_at', { ascending: false })
                 .limit(1)
                 .maybeSingle(),
@@ -274,8 +286,12 @@ async function loadManagedCommunities(communityIds?: string[]): Promise<ManagedC
             activeCount: mappedMembers.filter((member) => member.status === 'active').length,
             invitedCount: mappedMembers.filter((member) => member.status === 'invited').length,
             representativeEmail: mappedMembers.find((member) => member.role === 'admin')?.email ?? null,
-            memberInviteCode: code?.code_value ?? null,
-            memberInviteActive: code?.is_active ?? false,
+            representativeInviteCode: representativeCode?.code_value ?? null,
+            representativeInviteActive: representativeCode?.is_active ?? false,
+            representativeInviteExpiresAt: representativeCode?.expires_at ?? null,
+            representativeInviteUseCount: representativeCode?.use_count ?? 0,
+            memberInviteCode: memberCode?.code_value ?? null,
+            memberInviteActive: memberCode?.is_active ?? false,
             members: mappedMembers,
         } satisfies ManagedCommunity;
     }));
@@ -508,4 +524,34 @@ export async function rotateMemberInviteCode(communityId: string): Promise<Actio
     revalidatePath('/community-admin');
     revalidatePath('/admin');
     return { success: true, message: '会員用の共通コードを再発行しました', data: { code } };
+}
+
+export async function rotateRepresentativeInviteCode(communityId: string): Promise<ActionResult<{ code: string }>> {
+    const { user } = await requirePlatformOwner();
+    const admin = createServiceRoleClient();
+    const [{ data: community }, { data: representative }] = await Promise.all([
+        admin.from('communities').select('code_prefix').eq('id', communityId).single(),
+        admin.from('community_members').select('email').eq('community_id', communityId).eq('role', 'admin').maybeSingle(),
+    ]);
+    if (!community || !representative) return { success: false, message: 'コミュニティまたは代表者の登録情報が見つかりません' };
+
+    const code = generateInviteCode(community.code_prefix, 'admin');
+    const expiresAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString();
+    await admin.from('community_invite_codes').update({ is_active: false })
+        .eq('community_id', communityId).eq('kind', 'admin');
+    const { error } = await admin.from('community_invite_codes').insert({
+        community_id: communityId,
+        kind: 'admin',
+        code_value: code,
+        code_hash: await hashInviteCode(code),
+        target_email: representative.email,
+        max_uses: 1,
+        expires_at: expiresAt,
+        is_active: true,
+        created_by: user.id,
+    });
+    if (error) return { success: false, message: error.message };
+    await audit(admin, user.id, communityId, 'representative_code_rotated', representative.email);
+    revalidatePath('/admin');
+    return { success: true, message: '代表者用コードを再発行しました。有効期間は発行から14日間です。', data: { code } };
 }

@@ -3,19 +3,24 @@
 import { useState, useTransition } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { CalendarClock, Copy, Plus, ShieldCheck, StopCircle, Users } from 'lucide-react';
+import { CalendarClock, Copy, Plus, RotateCcw, ShieldCheck, StopCircle, Users } from 'lucide-react';
 
 import {
     activateCommunityPoc,
     createCommunity,
     endCommunityAccess,
     extendCommunityAccess,
+    rotateRepresentativeInviteCode,
     type ManagedCommunity,
 } from '@/app/actions/communityActions';
 
 function formatDate(value: string | null) {
     if (!value) return '未設定';
     return new Date(value).toLocaleString('ja-JP');
+}
+
+function isFuture(value: string | null) {
+    return Boolean(value && new Date(value).getTime() > Date.now());
 }
 
 export function OwnerAdminPanel({ communities }: { communities: ManagedCommunity[] }) {
@@ -107,6 +112,21 @@ export function OwnerAdminPanel({ communities }: { communities: ManagedCommunity
                             </div>
 
                             <div className="mt-5 rounded-2xl bg-slate-50 p-4">
+                                <div className="flex flex-wrap items-start justify-between gap-3">
+                                    <div>
+                                        <p className="text-xs font-bold text-slate-500">代表者用コード（指定メール・1回限り）</p>
+                                        <p className="mt-1 text-sm text-slate-600">{community.representativeEmail ?? '代表者メール未設定'} ／ 発行から14日間</p>
+                                    </div>
+                                    <button disabled={isPending} onClick={() => confirm('現在の代表者用コードは無効になります。新しい14日間有効のコードを発行しますか？') && run(() => rotateRepresentativeInviteCode(community.id))} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-bold text-slate-700 disabled:opacity-50"><RotateCcw className="h-4 w-4" />再発行</button>
+                                </div>
+                                <div className="mt-2 flex flex-wrap items-center gap-2">
+                                    <code className="break-all font-bold text-slate-800">{community.representativeInviteCode ?? '未発行'}</code>
+                                    {community.representativeInviteCode && <button type="button" onClick={() => navigator.clipboard.writeText(community.representativeInviteCode!)} aria-label="代表者用コードをコピー" className="rounded-lg bg-white p-2 text-indigo-600 shadow"><Copy className="h-4 w-4" /></button>}
+                                    <span className={`rounded-full px-2 py-1 text-xs font-bold ${community.representativeInviteActive && isFuture(community.representativeInviteExpiresAt) && community.representativeInviteUseCount === 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-600'}`}>{community.representativeInviteActive && isFuture(community.representativeInviteExpiresAt) && community.representativeInviteUseCount === 0 ? `有効：${formatDate(community.representativeInviteExpiresAt)}まで` : '無効・利用済み・期限切れ'}</span>
+                                </div>
+                            </div>
+
+                            <div className="mt-3 rounded-2xl bg-slate-50 p-4">
                                 <p className="text-xs font-bold text-slate-500">会員共通コード</p>
                                 <div className="mt-1 flex flex-wrap items-center gap-2">
                                     <code className="break-all font-bold text-slate-800">{community.memberInviteCode ?? '未発行'}</code>
