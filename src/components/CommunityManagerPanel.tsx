@@ -3,7 +3,7 @@
 import { useMemo, useState, useTransition } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Copy, FileUp, KeyRound, RotateCcw, UserMinus, UserPlus } from 'lucide-react';
+import { Check, Copy, FileUp, KeyRound, RotateCcw, UserMinus, UserPlus } from 'lucide-react';
 
 import {
     addCommunityMembers,
@@ -30,6 +30,7 @@ export function CommunityManagerPanel({
     const [isPending, startTransition] = useTransition();
     const [message, setMessage] = useState('');
     const [rawEmails, setRawEmails] = useState('');
+    const [copied, setCopied] = useState(false);
     const selected = communities.find((community) => community.id === selectedCommunityId) ?? communities[0];
     const count = useMemo(() => emailCount(rawEmails), [rawEmails]);
 
@@ -60,6 +61,17 @@ export function CommunityManagerPanel({
         setRawEmails(await file.text());
     };
 
+    const copyMemberCode = async () => {
+        if (!selected?.memberInviteCode) return;
+        try {
+            await navigator.clipboard.writeText(selected.memberInviteCode);
+            setCopied(true);
+            window.setTimeout(() => setCopied(false), 2200);
+        } catch {
+            setMessage('コピーに失敗しました。コードを選択してコピーしてください。');
+        }
+    };
+
     if (!selected) {
         return <main className="grid min-h-screen place-items-center bg-slate-50 p-6"><div className="text-center"><p className="text-slate-600">管理できるコミュニティがありません。</p><Link href="/" className="mt-4 inline-block font-bold text-indigo-600">ポートフォリオへ戻る</Link></div></main>;
     }
@@ -88,7 +100,7 @@ export function CommunityManagerPanel({
                     </div>
                     <div className="mt-4 flex items-center gap-3 rounded-xl bg-slate-50 p-4">
                         <code className="min-w-0 flex-1 break-all font-bold text-slate-800">{selected.memberInviteCode ?? '未発行'}</code>
-                        {selected.memberInviteCode && <button onClick={() => navigator.clipboard.writeText(selected.memberInviteCode!)} className="rounded-lg bg-white p-2 text-indigo-600 shadow"><Copy className="h-4 w-4" /></button>}
+                        {selected.memberInviteCode && <><button onClick={copyMemberCode} aria-label="会員共通コードをコピー" className="rounded-lg bg-white p-2 text-indigo-600 shadow">{copied ? <Check className="h-4 w-4 text-emerald-600" /> : <Copy className="h-4 w-4" />}</button>{copied && <span className="text-xs font-bold text-emerald-700">コピーしました</span>}</>}
                     </div>
                 </section>
 

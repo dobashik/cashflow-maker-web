@@ -3,11 +3,12 @@
 import { useState, useTransition } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { CalendarClock, Copy, Plus, RotateCcw, ShieldCheck, StopCircle, Users } from 'lucide-react';
+import { CalendarClock, Check, Copy, Plus, RotateCcw, ShieldCheck, StopCircle, Trash2, Users } from 'lucide-react';
 
 import {
     activateCommunityPoc,
     createCommunity,
+    deleteUnusedTrialCommunity,
     endCommunityAccess,
     extendCommunityAccess,
     rotateRepresentativeInviteCode,
@@ -29,6 +30,7 @@ export function OwnerAdminPanel({ communities }: { communities: ManagedCommunity
     const [message, setMessage] = useState('');
     const [generatedCodes, setGeneratedCodes] = useState<{ admin: string; member: string } | null>(null);
     const [form, setForm] = useState({ name: '', representativeEmail: '', maxMembers: '100' });
+    const [copiedCode, setCopiedCode] = useState<string | null>(null);
 
     const run = (task: () => Promise<{ success: boolean; message: string }>) => {
         startTransition(async () => {
@@ -53,6 +55,16 @@ export function OwnerAdminPanel({ communities }: { communities: ManagedCommunity
             }
             router.refresh();
         });
+    };
+
+    const copyCode = async (id: string, code: string) => {
+        try {
+            await navigator.clipboard.writeText(code);
+            setCopiedCode(id);
+            window.setTimeout(() => setCopiedCode((current) => current === id ? null : current), 2200);
+        } catch {
+            setMessage('コピーに失敗しました。コードを選択してコピーしてください。');
+        }
     };
 
     return (
@@ -86,8 +98,8 @@ export function OwnerAdminPanel({ communities }: { communities: ManagedCommunity
 
                     {generatedCodes && (
                         <div className="mt-5 grid gap-3 rounded-2xl bg-emerald-50 p-5 text-sm text-emerald-900 md:grid-cols-2">
-                            <CodeBox label="代表者用（1回・14日以内）" code={generatedCodes.admin} />
-                            <CodeBox label="会員共通コード（PoC開始まで無効）" code={generatedCodes.member} />
+                            <CodeBox id="new-admin" label="代表者用（1回・14日以内）" code={generatedCodes.admin} copied={copiedCode === 'new-admin'} onCopy={copyCode} />
+                            <CodeBox id="new-member" label="会員共通コード（PoC開始まで無効）" code={generatedCodes.member} copied={copiedCode === 'new-member'} onCopy={copyCode} />
                         </div>
                     )}
                 </section>
@@ -121,7 +133,7 @@ export function OwnerAdminPanel({ communities }: { communities: ManagedCommunity
                                 </div>
                                 <div className="mt-2 flex flex-wrap items-center gap-2">
                                     <code className="break-all font-bold text-slate-800">{community.representativeInviteCode ?? '未発行'}</code>
-                                    {community.representativeInviteCode && <button type="button" onClick={() => navigator.clipboard.writeText(community.representativeInviteCode!)} aria-label="代表者用コードをコピー" className="rounded-lg bg-white p-2 text-indigo-600 shadow"><Copy className="h-4 w-4" /></button>}
+                                    {community.representativeInviteCode && <CopyButton id={`representative-${community.id}`} code={community.representativeInviteCode} copied={copiedCode === `representative-${community.id}`} onCopy={copyCode} label="代表者用コードをコピー" />}
                                     <span className={`rounded-full px-2 py-1 text-xs font-bold ${community.representativeInviteActive && isFuture(community.representativeInviteExpiresAt) && community.representativeInviteUseCount === 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-600'}`}>{community.representativeInviteActive && isFuture(community.representativeInviteExpiresAt) && community.representativeInviteUseCount === 0 ? `有効：${formatDate(community.representativeInviteExpiresAt)}まで` : '無効・利用済み・期限切れ'}</span>
                                 </div>
                             </div>
@@ -130,6 +142,7 @@ export function OwnerAdminPanel({ communities }: { communities: ManagedCommunity
                                 <p className="text-xs font-bold text-slate-500">会員共通コード</p>
                                 <div className="mt-1 flex flex-wrap items-center gap-2">
                                     <code className="break-all font-bold text-slate-800">{community.memberInviteCode ?? '未発行'}</code>
+                                    {community.memberInviteCode && <CopyButton id={`member-${community.id}`} code={community.memberInviteCode} copied={copiedCode === `member-${community.id}`} onCopy={copyCode} label="会員共通コードをコピー" />}
                                     <span className={`rounded-full px-2 py-1 text-xs font-bold ${community.memberInviteActive ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-500'}`}>{community.memberInviteActive ? '有効' : '無効'}</span>
                                 </div>
                             </div>
@@ -140,6 +153,7 @@ export function OwnerAdminPanel({ communities }: { communities: ManagedCommunity
                                     <button key={months} disabled={isPending} onClick={() => run(() => extendCommunityAccess(community.id, months as 1 | 3 | 12))} className="rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm font-bold text-indigo-700">+{months}か月</button>
                                 ))}
                                 <Link href={`/community-admin?community=${community.id}`} className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-bold text-slate-700">会員を管理</Link>
+                                {community.status === 'trial' && community.activeCount === 0 && <button disabled={isPending} onClick={() => confirm('この未利用テストコミュニティと招待コードを完全に削除しますか？この操作は取り消せません。') && run(() => deleteUnusedTrialCommunity(community.id))} className="inline-flex items-center gap-2 rounded-xl border border-red-200 bg-white px-4 py-2 text-sm font-bold text-red-700 disabled:opacity-50"><Trash2 className="h-4 w-4" />テストを削除</button>}
                                 <button disabled={isPending || community.status === 'ended'} onClick={() => confirm('コミュニティ全体を停止しますか？') && run(() => endCommunityAccess(community.id))} className="ml-auto inline-flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm font-bold text-red-700"><StopCircle className="h-4 w-4" />契約終了</button>
                             </div>
                         </article>
@@ -150,8 +164,12 @@ export function OwnerAdminPanel({ communities }: { communities: ManagedCommunity
     );
 }
 
-function CodeBox({ label, code }: { label: string; code: string }) {
-    return <div><p className="font-bold">{label}</p><div className="mt-1 flex items-center gap-2"><code className="break-all">{code}</code><button type="button" onClick={() => navigator.clipboard.writeText(code)} aria-label="コピー"><Copy className="h-4 w-4" /></button></div></div>;
+function CopyButton({ id, code, copied, onCopy, label }: { id: string; code: string; copied: boolean; onCopy: (id: string, code: string) => void; label: string }) {
+    return <span className="inline-flex items-center gap-2"><button type="button" onClick={() => onCopy(id, code)} aria-label={label} className="rounded-lg bg-white p-2 text-indigo-600 shadow">{copied ? <Check className="h-4 w-4 text-emerald-600" /> : <Copy className="h-4 w-4" />}</button>{copied && <span className="text-xs font-bold text-emerald-700">コピーしました</span>}</span>;
+}
+
+function CodeBox({ id, label, code, copied, onCopy }: { id: string; label: string; code: string; copied: boolean; onCopy: (id: string, code: string) => void }) {
+    return <div><p className="font-bold">{label}</p><div className="mt-1 flex items-center gap-2"><code className="break-all">{code}</code><CopyButton id={id} code={code} copied={copied} onCopy={onCopy} label={`${label}をコピー`} /></div></div>;
 }
 
 function Stat({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {

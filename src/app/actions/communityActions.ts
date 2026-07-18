@@ -388,6 +388,23 @@ export async function endCommunityAccess(communityId: string): Promise<ActionRes
     return { success: true, message: 'コミュニティ全体を停止しました。データは30日後に削除対象になります。' };
 }
 
+export async function deleteUnusedTrialCommunity(communityId: string): Promise<ActionResult> {
+    await requirePlatformOwner();
+    const admin = createServiceRoleClient();
+    const [{ data: community }, { count: registeredCount }] = await Promise.all([
+        admin.from('communities').select('status').eq('id', communityId).maybeSingle(),
+        admin.from('community_members').select('id', { count: 'exact', head: true }).eq('community_id', communityId).not('user_id', 'is', null),
+    ]);
+    if (!community) return { success: false, message: 'コミュニティが見つかりません' };
+    if (community.status !== 'trial' || (registeredCount ?? 0) > 0) {
+        return { success: false, message: '登録済み利用者がいる、またはPoC開始済みのコミュニティは即時削除できません。契約終了をご利用ください。' };
+    }
+    const { error } = await admin.from('communities').delete().eq('id', communityId);
+    if (error) return { success: false, message: error.message };
+    revalidatePath('/admin');
+    return { success: true, message: '未利用のテストコミュニティを削除しました' };
+}
+
 export async function addCommunityMembers(communityId: string, rawInput: string): Promise<ActionResult<{
     added: number;
     skipped: number;
