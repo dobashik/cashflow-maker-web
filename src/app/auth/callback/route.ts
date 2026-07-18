@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 // The client you created from the Server-Side Auth instructions
 import { createClient } from "@/utils/supabase/server";
-import { bootstrapConfiguredOwner } from "@/lib/communityAccess";
+import { bootstrapConfiguredOwner, getAccessContext } from "@/lib/communityAccess";
 import { claimPendingInvitation } from "@/app/actions/communityActions";
 
 /**
@@ -32,9 +32,22 @@ export async function GET(request: Request) {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
         await bootstrapConfiguredOwner(user);
-        const invitationResult = await claimPendingInvitation(user.id, user.email ?? '');
-        if (!invitationResult.success && invitationResult.message !== '招待情報がありません') {
-          return NextResponse.redirect(`${origin}/access-pending?message=${encodeURIComponent(invitationResult.message)}`);
+
+        // すでに有効な会員・オーナーであれば、招待コードを改めて要求しない。
+        // それ以外は、招待コードを経由して利用権限を取得できた場合だけログインを維持する。
+        let access = await getAccessContext(user);
+        if (!access.hasAccess) {
+          const invitationResult = await claimPendingInvitation(user.id, user.email ?? '');
+          if (invitationResult.success) {
+            access = await getAccessContext(user);
+          }
+
+          if (!access.hasAccess) {
+            // 招待コードなし・不正なコード・指定外メールでは、Supabase の認証
+            // セッションも残さない。トップへ戻っても自動ログインしないようにする。
+            await supabase.auth.signOut();
+            return NextResponse.redirect(`${origin}/?login=invite_required`);
+          }
         }
       }
       const forwardedHost = request.headers.get("x-forwarded-host"); // original origin before load balancer

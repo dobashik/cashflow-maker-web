@@ -3,7 +3,8 @@
 import { useState, useTransition } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { CalendarClock, Check, Copy, Plus, RotateCcw, ShieldCheck, StopCircle, Trash2, Users } from 'lucide-react';
+import { CalendarClock, Check, Copy, LogOut, Plus, RotateCcw, ShieldCheck, StopCircle, Trash2, Users } from 'lucide-react';
+import { createClient } from '@/utils/supabase/client';
 
 import {
     activateCommunityPoc,
@@ -93,6 +94,11 @@ export function OwnerAdminPanel({ communities }: { communities: ManagedCommunity
         run(action);
     };
 
+    const logout = async () => {
+        await createClient().auth.signOut();
+        window.location.assign('/');
+    };
+
     return (
         <main className="min-h-screen bg-slate-50 px-4 py-10">
             <div className="mx-auto max-w-6xl space-y-8">
@@ -105,6 +111,7 @@ export function OwnerAdminPanel({ communities }: { communities: ManagedCommunity
                     <div className="flex gap-3">
                         <Link href="/community-admin" className="rounded-xl border border-indigo-200 bg-white px-4 py-2 font-bold text-indigo-700">会員管理</Link>
                         <Link href="/" className="rounded-xl bg-indigo-600 px-4 py-2 font-bold text-white">自分のポートフォリオ</Link>
+                        <button onClick={logout} className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 font-bold text-slate-700 hover:bg-slate-50"><LogOut className="h-4 w-4" />ログアウト</button>
                     </div>
                 </header>
 

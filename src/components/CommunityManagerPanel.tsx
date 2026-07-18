@@ -3,7 +3,8 @@
 import { useMemo, useState, useTransition } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Check, Copy, FileUp, KeyRound, RotateCcw, Trash2, UserMinus, UserPlus } from 'lucide-react';
+import { Check, Copy, FileUp, KeyRound, LogOut, RotateCcw, Trash2, UserMinus, UserPlus } from 'lucide-react';
+import { createClient } from '@/utils/supabase/client';
 
 import {
     addCommunityMembers,
@@ -81,6 +82,11 @@ export function CommunityManagerPanel({
         }
     };
 
+    const logout = async () => {
+        await createClient().auth.signOut();
+        window.location.assign('/');
+    };
+
     if (!selected) {
         return <main className="grid min-h-screen place-items-center bg-slate-50 p-6"><div className="text-center"><p className="text-slate-600">管理できるコミュニティがありません。</p><Link href="/" className="mt-4 inline-block font-bold text-indigo-600">ポートフォリオへ戻る</Link></div></main>;
     }
@@ -90,7 +96,7 @@ export function CommunityManagerPanel({
             <div className="mx-auto max-w-6xl space-y-7">
                 <header className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
                     <div><p className="text-sm font-bold text-indigo-600">COMMUNITY ADMIN</p><h1 className="mt-1 text-3xl font-black text-slate-900">{selected.name}</h1><p className="mt-2 text-slate-500">会員メールと利用権限だけを管理します。投資情報は表示されません。</p></div>
-                    <div className="flex gap-3">{isPlatformOwner && <Link href="/admin" className="rounded-xl border border-indigo-200 bg-white px-4 py-2 font-bold text-indigo-700">全体管理</Link>}<Link href="/" className="rounded-xl bg-indigo-600 px-4 py-2 font-bold text-white">自分のポートフォリオ</Link></div>
+                    <div className="flex flex-wrap gap-3">{isPlatformOwner && <Link href="/admin" className="rounded-xl border border-indigo-200 bg-white px-4 py-2 font-bold text-indigo-700">全体管理</Link>}<Link href="/" className="rounded-xl bg-indigo-600 px-4 py-2 font-bold text-white">自分のポートフォリオ</Link><button onClick={logout} className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 font-bold text-slate-700 hover:bg-slate-50"><LogOut className="h-4 w-4" />ログアウト</button></div>
                 </header>
 
                 {communities.length > 1 && <nav className="flex flex-wrap gap-2">{communities.map((community) => <Link key={community.id} href={`/community-admin?community=${community.id}`} className={`rounded-full px-4 py-2 text-sm font-bold ${community.id === selected.id ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600'}`}>{community.name}</Link>)}</nav>}
