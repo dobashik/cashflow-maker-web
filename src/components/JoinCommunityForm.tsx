@@ -26,7 +26,12 @@ export function JoinCommunityForm() {
             const supabase = createClient();
             const { error: oauthError } = await supabase.auth.signInWithOAuth({
                 provider: 'google',
-                options: { redirectTo: `${window.location.origin}/auth/callback?next=/` },
+                options: {
+                    redirectTo: `${window.location.origin}/auth/callback?next=/`,
+                    // 既存の Google セッションに関わらず、招待先として登録された
+                    // アカウントを明示的に選択してもらう。
+                    queryParams: { prompt: 'select_account' },
+                },
             });
             if (oauthError) setError(oauthError.message);
         } catch (joinError) {

@@ -23,6 +23,9 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
                 provider: "google",
                 options: {
                     redirectTo: `${window.location.origin}/auth/callback`,
+                    // Cloudflare 等でログイン済みの Google アカウントを自動選択せず、
+                    // Cashflow Maker で使うアカウントを毎回選べるようにする。
+                    queryParams: { prompt: "select_account" },
                 },
             });
             if (error) throw error;
