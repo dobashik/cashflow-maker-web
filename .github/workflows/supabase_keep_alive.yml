@@ -18,5 +18,14 @@ jobs:
           -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
           -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}"
 
+      - name: Purge expired community data after its 30-day recovery period
+        if: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY != '' }}
+        run: |
+          curl --fail-with-body --retry 3 --max-time 30 -i -X POST "${{ secrets.SUPABASE_URL }}/rest/v1/rpc/purge_expired_community_accounts" \
+          -H "apikey: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
+          -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
+          -H "Content-Type: application/json" \
+          -d '{}'
+
       - name: Keep GitHub Actions alive
         uses: liskin/gh-workflow-keepalive@v1

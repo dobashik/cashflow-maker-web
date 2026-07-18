@@ -3,10 +3,12 @@
 import { useMemo, useState, useTransition } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Check, Copy, FileUp, KeyRound, RotateCcw, UserMinus, UserPlus } from 'lucide-react';
+import { Check, Copy, FileUp, KeyRound, RotateCcw, Trash2, UserMinus, UserPlus } from 'lucide-react';
 
 import {
     addCommunityMembers,
+    deleteUnregisteredCommunityMember,
+    forceDeleteCommunityMember,
     restoreCommunityMember,
     revokeCommunityMember,
     rotateMemberInviteCode,
@@ -15,6 +17,13 @@ import {
 
 function emailCount(value: string) {
     return new Set(value.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi)?.map((email) => email.toLowerCase()) ?? []).size;
+}
+
+function memberStatusLabel(status: 'invited' | 'active' | 'revoked' | 'expired') {
+    if (status === 'active') return '利用中';
+    if (status === 'invited') return '登録待ち';
+    if (status === 'revoked') return '削除予約中';
+    return '利用期限切れ';
 }
 
 export function CommunityManagerPanel({
@@ -102,6 +111,7 @@ export function CommunityManagerPanel({
                         <code className="min-w-0 flex-1 break-all font-bold text-slate-800">{selected.memberInviteCode ?? '未発行'}</code>
                         {selected.memberInviteCode && <><button onClick={copyMemberCode} aria-label="会員共通コードをコピー" className="rounded-lg bg-white p-2 text-indigo-600 shadow">{copied ? <Check className="h-4 w-4 text-emerald-600" /> : <Copy className="h-4 w-4" />}</button>{copied && <span className="text-xs font-bold text-emerald-700">コピーしました</span>}</>}
                     </div>
+                    <p className={`mt-3 text-sm font-bold ${selected.memberInviteActive ? 'text-emerald-700' : 'text-slate-500'}`}>{selected.memberInviteActive ? `利用可能：${selected.memberInviteExpiresAt ? new Date(selected.memberInviteExpiresAt).toLocaleString('ja-JP') : '期限未設定'}まで` : '利用開始前のため、このコードはまだ使えません'}</p>
                 </section>
 
                 <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -116,7 +126,29 @@ export function CommunityManagerPanel({
 
                 <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
                     <div className="border-b border-slate-200 p-6"><h2 className="text-xl font-black text-slate-900">会員一覧</h2><p className="mt-1 text-sm text-slate-500">代表者を含む登録メール一覧です。資産情報は取得・表示しません。</p></div>
-                    <div className="overflow-x-auto"><table className="w-full min-w-[760px] text-left text-sm"><thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="px-5 py-3">メール</th><th className="px-5 py-3">役割</th><th className="px-5 py-3">状態</th><th className="px-5 py-3">期限</th><th className="px-5 py-3">操作</th></tr></thead><tbody className="divide-y divide-slate-100">{selected.members?.map((member) => <tr key={member.id}><td className="px-5 py-4 font-medium text-slate-800">{member.email}</td><td className="px-5 py-4">{member.role === 'admin' ? '代表者' : '会員'}</td><td className="px-5 py-4"><span className={`rounded-full px-2 py-1 text-xs font-bold ${member.status === 'active' ? 'bg-emerald-100 text-emerald-700' : member.status === 'invited' ? 'bg-blue-100 text-blue-700' : 'bg-red-100 text-red-700'}`}>{member.status}</span></td><td className="px-5 py-4 text-slate-500">{member.accessExpiresAt ? new Date(member.accessExpiresAt).toLocaleDateString('ja-JP') : '未設定'}</td><td className="px-5 py-4">{member.role !== 'admin' && (['revoked', 'expired'].includes(member.status) ? <button disabled={isPending} onClick={() => run(() => restoreCommunityMember(selected.id, member.id))} className="font-bold text-indigo-600">復旧</button> : <button disabled={isPending} onClick={() => confirm(`${member.email} の利用を停止しますか？`) && run(() => revokeCommunityMember(selected.id, member.id))} className="inline-flex items-center gap-1 font-bold text-red-600"><UserMinus className="h-4 w-4" />停止</button>)}</td></tr>)}</tbody></table></div>
+                    <div className="overflow-x-auto">
+                        <table className="w-full min-w-[760px] text-left text-sm">
+                            <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="px-5 py-3">メール</th><th className="px-5 py-3">役割</th><th className="px-5 py-3">状態</th><th className="px-5 py-3">期限</th><th className="px-5 py-3">操作</th></tr></thead>
+                            <tbody className="divide-y divide-slate-100">
+                                {selected.members?.map((member) => (
+                                    <tr key={member.id}>
+                                        <td className="px-5 py-4 font-medium text-slate-800">{member.email}</td>
+                                        <td className="px-5 py-4">{member.role === 'admin' ? '代表者' : '会員'}</td>
+                                        <td className="px-5 py-4"><span className={`rounded-full px-2 py-1 text-xs font-bold ${member.status === 'active' ? 'bg-emerald-100 text-emerald-700' : member.status === 'invited' ? 'bg-blue-100 text-blue-700' : 'bg-red-100 text-red-700'}`}>{memberStatusLabel(member.status)}</span></td>
+                                        <td className="px-5 py-4 text-slate-500">{member.accessExpiresAt ? new Date(member.accessExpiresAt).toLocaleDateString('ja-JP') : '未設定'}</td>
+                                        <td className="px-5 py-4">
+                                            {member.role !== 'admin' && (
+                                                <div className="flex flex-wrap items-center gap-3">
+                                                    {!member.hasAccount ? <button disabled={isPending} onClick={() => confirm(`${member.email} の招待を削除しますか？`) && run(() => deleteUnregisteredCommunityMember(selected.id, member.id))} className="inline-flex items-center gap-1 font-bold text-red-600"><Trash2 className="h-4 w-4" />招待を削除する</button> : ['revoked', 'expired'].includes(member.status) ? <button disabled={isPending} onClick={() => run(() => restoreCommunityMember(selected.id, member.id))} className="font-bold text-indigo-600">削除予約を取り消す</button> : <button disabled={isPending} onClick={() => confirm(`${member.email} の利用を終了し、個人データを30日後に削除予約しますか？`) && run(() => revokeCommunityMember(selected.id, member.id))} className="inline-flex items-center gap-1 font-bold text-red-600"><UserMinus className="h-4 w-4" />利用を終了して削除予約</button>}
+                                                    {isPlatformOwner && member.hasAccount && <button disabled={isPending} onClick={() => confirm(`${member.email} のアカウントとポートフォリオ・CSV由来データを今すぐ完全削除しますか？この操作は取り消せません。`) && run(() => forceDeleteCommunityMember(selected.id, member.id))} className="font-bold text-red-700 underline underline-offset-2">今すぐ完全削除</button>}
+                                                </div>
+                                            )}
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
                 </section>
             </div>
         </main>

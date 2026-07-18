@@ -24,6 +24,14 @@ function isFuture(value: string | null) {
     return Boolean(value && new Date(value).getTime() > Date.now());
 }
 
+function communityStatusLabel(community: ManagedCommunity) {
+    if (community.status === 'ended') return '契約終了';
+    if (community.status === 'active') return '継続利用中';
+    if (community.status === 'poc') return '3か月利用中';
+    if (community.accessStartsAt) return '代表者お試し利用中';
+    return '代表者登録待ち';
+}
+
 export function OwnerAdminPanel({ communities }: { communities: ManagedCommunity[] }) {
     const router = useRouter();
     const [isPending, startTransition] = useTransition();
@@ -112,7 +120,7 @@ export function OwnerAdminPanel({ communities }: { communities: ManagedCommunity
                                 <div>
                                     <div className="flex flex-wrap items-center gap-3">
                                         <h2 className="text-xl font-black text-slate-900">{community.name}</h2>
-                                        <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black uppercase text-slate-600">{community.status}</span>
+                                        <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-600">{communityStatusLabel(community)}</span>
                                     </div>
                                     <p className="mt-2 text-sm text-slate-500">代表者: {community.representativeEmail ?? '未設定'}</p>
                                 </div>
@@ -143,18 +151,18 @@ export function OwnerAdminPanel({ communities }: { communities: ManagedCommunity
                                 <div className="mt-1 flex flex-wrap items-center gap-2">
                                     <code className="break-all font-bold text-slate-800">{community.memberInviteCode ?? '未発行'}</code>
                                     {community.memberInviteCode && <CopyButton id={`member-${community.id}`} code={community.memberInviteCode} copied={copiedCode === `member-${community.id}`} onCopy={copyCode} label="会員共通コードをコピー" />}
-                                    <span className={`rounded-full px-2 py-1 text-xs font-bold ${community.memberInviteActive ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-500'}`}>{community.memberInviteActive ? '有効' : '無効'}</span>
+                                    <span className={`rounded-full px-2 py-1 text-xs font-bold ${community.memberInviteActive ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-500'}`}>{community.memberInviteActive ? `有効：${formatDate(community.memberInviteExpiresAt)}まで` : '利用開始まで無効'}</span>
                                 </div>
                             </div>
 
                             <div className="mt-5 flex flex-wrap gap-2">
-                                <button disabled={isPending} onClick={() => run(() => activateCommunityPoc(community.id))} className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-bold text-white">PoCを3か月開始</button>
+                                <button disabled={isPending || community.status !== 'trial'} onClick={() => run(() => activateCommunityPoc(community.id))} className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">3か月の利用を開始</button>
                                 {[1, 3, 12].map((months) => (
-                                    <button key={months} disabled={isPending} onClick={() => run(() => extendCommunityAccess(community.id, months as 1 | 3 | 12))} className="rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm font-bold text-indigo-700">+{months}か月</button>
+                                    <button key={months} disabled={isPending || !['poc', 'active'].includes(community.status)} onClick={() => run(() => extendCommunityAccess(community.id, months as 1 | 3 | 12))} className="rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm font-bold text-indigo-700 disabled:opacity-50">+{months}か月延長</button>
                                 ))}
                                 <Link href={`/community-admin?community=${community.id}`} className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-bold text-slate-700">会員を管理</Link>
-                                {community.status === 'trial' && community.activeCount === 0 && <button disabled={isPending} onClick={() => confirm('この未利用テストコミュニティと招待コードを完全に削除しますか？この操作は取り消せません。') && run(() => deleteUnusedTrialCommunity(community.id))} className="inline-flex items-center gap-2 rounded-xl border border-red-200 bg-white px-4 py-2 text-sm font-bold text-red-700 disabled:opacity-50"><Trash2 className="h-4 w-4" />テストを削除</button>}
-                                <button disabled={isPending || community.status === 'ended'} onClick={() => confirm('コミュニティ全体を停止しますか？') && run(() => endCommunityAccess(community.id))} className="ml-auto inline-flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm font-bold text-red-700"><StopCircle className="h-4 w-4" />契約終了</button>
+                                {community.status === 'trial' && community.activeCount === 0 && <button disabled={isPending} onClick={() => confirm('この未利用テストコミュニティと招待コードを完全に削除しますか？この操作は取り消せません。') && run(() => deleteUnusedTrialCommunity(community.id))} className="inline-flex items-center gap-2 rounded-xl border border-red-200 bg-white px-4 py-2 text-sm font-bold text-red-700 disabled:opacity-50"><Trash2 className="h-4 w-4" />コミュニティを削除する</button>}
+                                <button disabled={isPending || community.status === 'ended'} onClick={() => confirm('このコミュニティの契約を終了しますか？会員は直ちに利用できなくなり、個人データは30日後の削除対象になります。') && run(() => endCommunityAccess(community.id))} className="ml-auto inline-flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm font-bold text-red-700"><StopCircle className="h-4 w-4" />契約を終了する</button>
                             </div>
                         </article>
                     ))}

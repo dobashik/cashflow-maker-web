@@ -8,7 +8,6 @@ import { PortfolioPie } from '@/components/PortfolioPie';
 import { HoldingsTable } from '@/components/HoldingsTable';
 import { DividendCalendar } from '@/components/DividendCalendar';
 import { DividendHistory } from '@/components/DividendHistory';
-import { BetaNoticeBanner } from '@/components/BetaNoticeBanner';
 import { Footer } from '@/components/Footer';
 
 import { MONTHLY_DIVIDENDS_DATA, TOTAL_DIVIDENDS_ANNUAL, Holding } from '@/lib/mockData';
@@ -127,8 +126,6 @@ export function Dashboard() {
 
             {/* Spacer for fixed header */}
             <div className="h-24"></div>
-
-            <BetaNoticeBanner />
 
             <DashboardContent animationKey={animationKey} isSampleMode={false} />
 

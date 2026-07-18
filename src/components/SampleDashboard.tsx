@@ -4,7 +4,6 @@ import { useState } from 'react';
 import { Header } from "@/components/Header";
 import { HeroSection } from "@/components/HeroSection";
 import { DashboardContent } from "@/components/Dashboard";
-import { BetaNoticeBanner } from "@/components/BetaNoticeBanner";
 import { Footer } from "@/components/Footer";
 
 export function SampleDashboard() {
@@ -21,8 +20,6 @@ export function SampleDashboard() {
 
             {/* Spacer for fixed header */}
             <div className="h-20"></div>
-
-            <BetaNoticeBanner />
 
             <HeroSection />
 

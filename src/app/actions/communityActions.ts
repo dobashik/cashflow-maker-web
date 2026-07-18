@@ -36,6 +36,7 @@ export type ManagedMember = {
     joinedAt: string | null;
     lastSeenAt: string | null;
     deleteAfter: string | null;
+    hasAccount: boolean;
 };
 
 export type ManagedCommunity = {
@@ -56,6 +57,7 @@ export type ManagedCommunity = {
     representativeInviteUseCount: number;
     memberInviteCode: string | null;
     memberInviteActive: boolean;
+    memberInviteExpiresAt: string | null;
     members?: ManagedMember[];
 };
 
@@ -243,13 +245,13 @@ async function loadManagedCommunities(communityIds?: string[]): Promise<ManagedC
         const [{ data: members }, { data: memberCode }, { data: representativeCode }] = await Promise.all([
             admin
                 .from('community_members')
-                .select('id, email, role, status, access_expires_at, joined_at, last_seen_at, delete_after')
+                .select('id, email, user_id, role, status, access_expires_at, joined_at, last_seen_at, delete_after')
                 .eq('community_id', community.id)
                 .order('role')
                 .order('email'),
             admin
                 .from('community_invite_codes')
-                .select('code_value, is_active')
+                .select('code_value, is_active, expires_at')
                 .eq('community_id', community.id)
                 .eq('kind', 'member')
                 .order('created_at', { ascending: false })
@@ -273,6 +275,7 @@ async function loadManagedCommunities(communityIds?: string[]): Promise<ManagedC
             joinedAt: member.joined_at,
             lastSeenAt: member.last_seen_at,
             deleteAfter: member.delete_after,
+            hasAccount: Boolean(member.user_id),
         }));
         return {
             id: community.id,
@@ -292,6 +295,7 @@ async function loadManagedCommunities(communityIds?: string[]): Promise<ManagedC
             representativeInviteUseCount: representativeCode?.use_count ?? 0,
             memberInviteCode: memberCode?.code_value ?? null,
             memberInviteActive: memberCode?.is_active ?? false,
+            memberInviteExpiresAt: memberCode?.expires_at ?? null,
             members: mappedMembers,
         } satisfies ManagedCommunity;
     }));
@@ -315,7 +319,7 @@ export async function getMyManagedCommunities(): Promise<ManagedCommunity[]> {
 
 export async function activateCommunityPoc(communityId: string): Promise<ActionResult> {
     const { user } = await requirePlatformOwner();
-    return setCommunityPeriod(communityId, 3, 'poc', user.id, 'poc_activated');
+    return setCommunityPeriod(communityId, 3, 'poc', user.id, 'poc_activated', '3か月の利用を開始しました');
 }
 
 export async function extendCommunityAccess(
@@ -323,7 +327,7 @@ export async function extendCommunityAccess(
     months: 1 | 3 | 12,
 ): Promise<ActionResult> {
     const { user } = await requirePlatformOwner();
-    return setCommunityPeriod(communityId, months, 'active', user.id, 'contract_extended');
+    return setCommunityPeriod(communityId, months, 'active', user.id, 'contract_extended', `利用期間を${months}か月延長しました`);
 }
 
 async function setCommunityPeriod(
@@ -332,6 +336,7 @@ async function setCommunityPeriod(
     status: 'poc' | 'active',
     actorUserId: string,
     action: string,
+    completionMessage: string,
 ): Promise<ActionResult> {
     const admin = createServiceRoleClient();
     const [{ data: community }, { data: allActiveRows }, { data: communityRows }] = await Promise.all([
@@ -367,7 +372,7 @@ async function setCommunityPeriod(
     ]);
     revalidatePath('/admin');
     revalidatePath('/community-admin');
-    return { success: true, message: `${months}か月分の利用期限を設定しました` };
+    return { success: true, message: `${completionMessage}。利用期限は${new Date(nextExpiry).toLocaleDateString('ja-JP')}です。` };
 }
 
 export async function endCommunityAccess(communityId: string): Promise<ActionResult> {
@@ -385,7 +390,7 @@ export async function endCommunityAccess(communityId: string): Promise<ActionRes
         audit(admin, user.id, communityId, 'community_ended', undefined, { deleteAfter }),
     ]);
     revalidatePath('/admin');
-    return { success: true, message: 'コミュニティ全体を停止しました。データは30日後に削除対象になります。' };
+    return { success: true, message: '契約を終了しました。アクセスを停止し、個人データは30日後の削除対象になります。' };
 }
 
 export async function deleteUnusedTrialCommunity(communityId: string): Promise<ActionResult> {
@@ -489,7 +494,62 @@ export async function revokeCommunityMember(communityId: string, memberId: strin
     await audit(admin, user.id, communityId, 'member_revoked', member.email, { deleteAfter });
     revalidatePath('/community-admin');
     revalidatePath('/admin');
-    return { success: true, message: '会員の利用権限を停止しました' };
+    return { success: true, message: '利用を終了し、個人データの30日後削除を予約しました' };
+}
+
+export async function deleteUnregisteredCommunityMember(communityId: string, memberId: string): Promise<ActionResult> {
+    const { user } = await requireCommunityManager(communityId);
+    const admin = createServiceRoleClient();
+    const { data: member } = await admin
+        .from('community_members')
+        .select('email, user_id, role')
+        .eq('id', memberId)
+        .eq('community_id', communityId)
+        .maybeSingle();
+    if (!member || member.role === 'admin') return { success: false, message: '対象の会員が見つかりません' };
+    if (member.user_id) return { success: false, message: '登録済み会員は削除予約またはオーナーによる即時完全削除をご利用ください' };
+    const { error } = await admin.from('community_members').delete().eq('id', memberId).eq('community_id', communityId);
+    if (error) return { success: false, message: error.message };
+    await audit(admin, user.id, communityId, 'unregistered_member_deleted', member.email);
+    revalidatePath('/community-admin');
+    revalidatePath('/admin');
+    return { success: true, message: '未登録会員の招待を削除しました' };
+}
+
+export async function forceDeleteCommunityMember(communityId: string, memberId: string): Promise<ActionResult> {
+    const { user } = await requirePlatformOwner();
+    const admin = createServiceRoleClient();
+    const { data: member } = await admin
+        .from('community_members')
+        .select('email, user_id, role')
+        .eq('id', memberId)
+        .eq('community_id', communityId)
+        .maybeSingle();
+    if (!member || member.role === 'admin') return { success: false, message: '対象の会員が見つかりません' };
+
+    if (!member.user_id) return deleteUnregisteredCommunityMember(communityId, memberId);
+
+    const { count: otherMemberships } = await admin
+        .from('community_members')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', member.user_id)
+        .neq('id', memberId);
+    await audit(admin, user.id, communityId, 'member_force_deleted', member.email, { otherMemberships: otherMemberships ?? 0 });
+
+    if ((otherMemberships ?? 0) > 0) {
+        const { error } = await admin.from('community_members').delete().eq('id', memberId).eq('community_id', communityId);
+        if (error) return { success: false, message: error.message };
+        revalidatePath('/community-admin');
+        revalidatePath('/admin');
+        return { success: true, message: 'このコミュニティから会員を削除しました。他コミュニティで利用中のため、個人データは保持されています。' };
+    }
+
+    const { error: deleteUserError } = await admin.auth.admin.deleteUser(member.user_id);
+    if (deleteUserError) return { success: false, message: `ユーザーと個人データの削除に失敗しました: ${deleteUserError.message}` };
+    await admin.from('community_members').delete().eq('id', memberId).eq('community_id', communityId);
+    revalidatePath('/community-admin');
+    revalidatePath('/admin');
+    return { success: true, message: '会員アカウントとポートフォリオ・CSV由来データを即時完全削除しました' };
 }
 
 export async function restoreCommunityMember(communityId: string, memberId: string): Promise<ActionResult> {
@@ -512,7 +572,7 @@ export async function restoreCommunityMember(communityId: string, memberId: stri
     await audit(admin, user.id, communityId, 'member_restored', member.email);
     revalidatePath('/community-admin');
     revalidatePath('/admin');
-    return { success: true, message: '会員の利用権限を復旧しました' };
+    return { success: true, message: '削除予約を取り消し、会員の利用を復旧しました' };
 }
 
 export async function rotateMemberInviteCode(communityId: string): Promise<ActionResult<{ code: string }>> {
