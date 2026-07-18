@@ -330,6 +330,25 @@ export async function extendCommunityAccess(
     return setCommunityPeriod(communityId, months, 'active', user.id, 'contract_extended', `利用期間を${months}か月延長しました`);
 }
 
+export async function updateCommunityCapacity(communityId: string, requestedCapacity: number): Promise<ActionResult> {
+    const { user } = await requirePlatformOwner();
+    const maxMembers = Math.max(2, Math.min(200, Math.trunc(requestedCapacity || 0)));
+    if (maxMembers !== Math.trunc(requestedCapacity)) return { success: false, message: '定員は2〜200名の整数で指定してください' };
+    const admin = createServiceRoleClient();
+    const [{ data: community }, { count: occupiedCount }] = await Promise.all([
+        admin.from('communities').select('id').eq('id', communityId).maybeSingle(),
+        admin.from('community_members').select('id', { count: 'exact', head: true }).eq('community_id', communityId).in('status', ['invited', 'active']),
+    ]);
+    if (!community) return { success: false, message: 'コミュニティが見つかりません' };
+    if ((occupiedCount ?? 0) > maxMembers) return { success: false, message: `登録待ち・利用中の会員が${occupiedCount}名いるため、定員をそれ未満には変更できません` };
+    const { error } = await admin.from('communities').update({ max_members: maxMembers }).eq('id', communityId);
+    if (error) return { success: false, message: error.message };
+    await audit(admin, user.id, communityId, 'community_capacity_updated', undefined, { maxMembers });
+    revalidatePath('/admin');
+    revalidatePath('/community-admin');
+    return { success: true, message: `定員を${maxMembers}名に変更しました` };
+}
+
 async function setCommunityPeriod(
     communityId: string,
     months: number,

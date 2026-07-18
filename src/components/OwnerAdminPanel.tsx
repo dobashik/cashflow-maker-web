@@ -13,6 +13,7 @@ import {
     extendCommunityAccess,
     forceDeleteCommunity,
     rotateRepresentativeInviteCode,
+    updateCommunityCapacity,
     type ManagedCommunity,
 } from '@/app/actions/communityActions';
 
@@ -46,6 +47,7 @@ export function OwnerAdminPanel({ communities }: { communities: ManagedCommunity
         confirmLabel: string;
         action: () => Promise<{ success: boolean; message: string }>;
     } | null>(null);
+    const [restartCommunity, setRestartCommunity] = useState<ManagedCommunity | null>(null);
 
     const run = (task: () => Promise<{ success: boolean; message: string }>) => {
         startTransition(async () => {
@@ -141,7 +143,7 @@ export function OwnerAdminPanel({ communities }: { communities: ManagedCommunity
                                     <p className="mt-2 text-sm text-slate-500">代表者: {community.representativeEmail ?? '未設定'}</p>
                                 </div>
                                 <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
-                                    <Stat icon={<Users className="h-4 w-4" />} label="有効 / 定員" value={`${community.activeCount} / ${community.maxMembers}`} />
+                                    <div className="rounded-xl bg-slate-50 p-3"><div className="flex items-center gap-1 text-xs font-bold text-slate-500"><Users className="h-4 w-4" />有効 / 定員</div><form onSubmit={(event) => { event.preventDefault(); const value = Number(new FormData(event.currentTarget).get('capacity')); run(() => updateCommunityCapacity(community.id, value)); }} className="mt-1 flex items-center gap-1"><span className="font-black text-slate-800">{community.activeCount} /</span><input name="capacity" type="number" min="2" max="200" defaultValue={community.maxMembers} aria-label={`${community.name}の定員`} className="w-14 rounded border border-slate-300 bg-white px-1 py-0.5 text-center font-black text-slate-800" /><button disabled={isPending} className="rounded bg-indigo-600 px-1.5 py-0.5 text-[10px] font-bold text-white">変更</button></form></div>
                                     <Stat icon={<ShieldCheck className="h-4 w-4" />} label="招待済み" value={`${community.invitedCount}名`} />
                                     <Stat icon={<CalendarClock className="h-4 w-4" />} label="利用期限" value={formatDate(community.accessExpiresAt)} />
                                 </div>
@@ -176,6 +178,7 @@ export function OwnerAdminPanel({ communities }: { communities: ManagedCommunity
                                 {[1, 3, 12].map((months) => (
                                     <button key={months} disabled={isPending || !['poc', 'active'].includes(community.status)} onClick={() => run(() => extendCommunityAccess(community.id, months as 1 | 3 | 12))} className="rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm font-bold text-indigo-700 disabled:opacity-50">+{months}か月延長</button>
                                 ))}
+                                {community.status === 'ended' && <button disabled={isPending} onClick={() => setRestartCommunity(community)} className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">契約を再開する</button>}
                                 <Link href={`/community-admin?community=${community.id}`} className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-bold text-slate-700">会員を管理</Link>
                                 <button disabled={isPending} onClick={() => requestConfirmation(community.status === 'trial' && community.activeCount === 0 ? { title: 'コミュニティを削除しますか？', description: '未利用のテストコミュニティと招待コードを完全に削除します。この操作は取り消せません。', confirmLabel: '完全に削除する', action: () => deleteUnusedTrialCommunity(community.id) } : { title: 'コミュニティを今すぐ完全削除しますか？', description: 'このコミュニティの会員一覧・招待コードを削除します。他コミュニティに所属していない会員は、アカウント・ポートフォリオ・CSV由来データも直ちに削除されます。この操作は取り消せません。', confirmLabel: '今すぐ完全削除する', action: () => forceDeleteCommunity(community.id) })} className="inline-flex items-center gap-2 rounded-xl border border-red-200 bg-white px-4 py-2 text-sm font-bold text-red-700 disabled:opacity-50"><Trash2 className="h-4 w-4" />コミュニティを削除する</button>
                                 <button disabled={isPending || community.status === 'ended'} onClick={() => requestConfirmation({ title: '契約を終了しますか？', description: '会員は直ちに利用できなくなります。個人データは30日間保留し、その後に自動削除します。保留期間中は会員管理から復旧できます。', confirmLabel: '契約を終了する', action: () => endCommunityAccess(community.id) })} className="ml-auto inline-flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm font-bold text-red-700 disabled:opacity-50"><StopCircle className="h-4 w-4" />{community.status === 'ended' ? '契約終了済み' : '契約を終了する'}</button>
@@ -185,6 +188,7 @@ export function OwnerAdminPanel({ communities }: { communities: ManagedCommunity
                 </section>
             </div>
             {confirmation && <ConfirmationDialog title={confirmation.title} description={confirmation.description} confirmLabel={confirmation.confirmLabel} onCancel={() => setConfirmation(null)} onConfirm={confirmAction} />}
+            {restartCommunity && <RestartDialog communityName={restartCommunity.name} onCancel={() => setRestartCommunity(null)} onSelect={(months) => { const communityId = restartCommunity.id; setRestartCommunity(null); run(() => extendCommunityAccess(communityId, months)); }} />}
         </main>
     );
 }
@@ -196,6 +200,12 @@ function ConfirmationDialog({ title, description, confirmLabel, onCancel, onConf
             <p className="mt-3 text-sm leading-6 text-slate-600">{description}</p>
             <div className="mt-6 flex justify-end gap-3"><button onClick={onCancel} className="rounded-xl border border-slate-300 px-4 py-2.5 font-bold text-slate-700">キャンセル</button><button onClick={onConfirm} className="rounded-xl bg-red-600 px-4 py-2.5 font-bold text-white">{confirmLabel}</button></div>
         </div>
+    </div>;
+}
+
+function RestartDialog({ communityName, onCancel, onSelect }: { communityName: string; onCancel: () => void; onSelect: (months: 1 | 3 | 12) => void }) {
+    return <div className="fixed inset-0 z-[100] grid place-items-center bg-slate-950/40 p-4" role="dialog" aria-modal="true" aria-labelledby="restart-title">
+        <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl"><h2 id="restart-title" className="text-xl font-black text-slate-900">契約を再開しますか？</h2><p className="mt-3 text-sm leading-6 text-slate-600">{communityName} の利用を再開する期間を選んでください。削除予約中の会員も復旧します。</p><div className="mt-5 grid grid-cols-3 gap-2">{([1, 3, 12] as const).map((months) => <button key={months} onClick={() => onSelect(months)} className="rounded-xl bg-emerald-600 px-3 py-3 font-bold text-white">{months}か月</button>)}</div><button onClick={onCancel} className="mt-4 w-full rounded-xl border border-slate-300 px-4 py-2.5 font-bold text-slate-700">キャンセル</button></div>
     </div>;
 }
 

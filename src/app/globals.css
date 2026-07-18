@@ -21,6 +21,15 @@ body {
   overflow-x: hidden;
 }
 
+button:not(:disabled),
+[role="button"]:not([aria-disabled="true"]) {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
 @keyframes wave {
   0% {
     transform: translateX(0);

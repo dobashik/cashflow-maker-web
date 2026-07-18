@@ -128,7 +128,7 @@ export function CommunityManagerPanel({
                     <div className="border-b border-slate-200 p-6"><h2 className="text-xl font-black text-slate-900">会員一覧</h2><p className="mt-1 text-sm text-slate-500">代表者を含む登録メール一覧です。資産情報は取得・表示しません。</p></div>
                     <div className="overflow-x-auto">
                         <table className="w-full min-w-[760px] text-left text-sm">
-                            <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="px-5 py-3">メール</th><th className="px-5 py-3">役割</th><th className="px-5 py-3">状態</th><th className="px-5 py-3">期限</th><th className="px-5 py-3">操作</th></tr></thead>
+                            <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="px-5 py-3">メール</th><th className="px-5 py-3">役割</th><th className="px-5 py-3">状態</th><th className="px-5 py-3">利用期限</th><th className="px-5 py-3">削除予定日</th><th className="px-5 py-3">操作</th></tr></thead>
                             <tbody className="divide-y divide-slate-100">
                                 {selected.members?.map((member) => (
                                     <tr key={member.id}>
@@ -136,6 +136,7 @@ export function CommunityManagerPanel({
                                         <td className="px-5 py-4">{member.role === 'admin' ? '代表者' : '会員'}</td>
                                         <td className="px-5 py-4"><span className={`rounded-full px-2 py-1 text-xs font-bold ${member.status === 'active' ? 'bg-emerald-100 text-emerald-700' : member.status === 'invited' ? 'bg-blue-100 text-blue-700' : 'bg-red-100 text-red-700'}`}>{memberStatusLabel(member.status)}</span></td>
                                         <td className="px-5 py-4 text-slate-500">{member.accessExpiresAt ? new Date(member.accessExpiresAt).toLocaleDateString('ja-JP') : '未設定'}</td>
+                                        <td className="px-5 py-4 text-slate-500">{member.deleteAfter ? new Date(member.deleteAfter).toLocaleString('ja-JP') : '—'}</td>
                                         <td className="px-5 py-4">
                                             {member.role !== 'admin' && (
                                                 <div className="flex flex-wrap items-center gap-3">
