@@ -11,6 +11,7 @@ import {
     deleteUnusedTrialCommunity,
     endCommunityAccess,
     extendCommunityAccess,
+    forceDeleteCommunity,
     rotateRepresentativeInviteCode,
     type ManagedCommunity,
 } from '@/app/actions/communityActions';
@@ -39,6 +40,12 @@ export function OwnerAdminPanel({ communities }: { communities: ManagedCommunity
     const [generatedCodes, setGeneratedCodes] = useState<{ admin: string; member: string } | null>(null);
     const [form, setForm] = useState({ name: '', representativeEmail: '', maxMembers: '100' });
     const [copiedCode, setCopiedCode] = useState<string | null>(null);
+    const [confirmation, setConfirmation] = useState<{
+        title: string;
+        description: string;
+        confirmLabel: string;
+        action: () => Promise<{ success: boolean; message: string }>;
+    } | null>(null);
 
     const run = (task: () => Promise<{ success: boolean; message: string }>) => {
         startTransition(async () => {
@@ -73,6 +80,15 @@ export function OwnerAdminPanel({ communities }: { communities: ManagedCommunity
         } catch {
             setMessage('コピーに失敗しました。コードを選択してコピーしてください。');
         }
+    };
+
+    const requestConfirmation = (next: NonNullable<typeof confirmation>) => setConfirmation(next);
+
+    const confirmAction = () => {
+        if (!confirmation) return;
+        const action = confirmation.action;
+        setConfirmation(null);
+        run(action);
     };
 
     return (
@@ -137,7 +153,7 @@ export function OwnerAdminPanel({ communities }: { communities: ManagedCommunity
                                         <p className="text-xs font-bold text-slate-500">代表者用コード（指定メール・1回限り）</p>
                                         <p className="mt-1 text-sm text-slate-600">{community.representativeEmail ?? '代表者メール未設定'} ／ 発行から14日間</p>
                                     </div>
-                                    <button disabled={isPending} onClick={() => confirm('現在の代表者用コードは無効になります。新しい14日間有効のコードを発行しますか？') && run(() => rotateRepresentativeInviteCode(community.id))} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-bold text-slate-700 disabled:opacity-50"><RotateCcw className="h-4 w-4" />再発行</button>
+                                    <button disabled={isPending} onClick={() => requestConfirmation({ title: '代表者用コードを再発行しますか？', description: '現在のコードはすぐに無効になり、新しいコードは発行から14日間有効です。', confirmLabel: '再発行する', action: () => rotateRepresentativeInviteCode(community.id) })} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-bold text-slate-700 disabled:opacity-50"><RotateCcw className="h-4 w-4" />再発行</button>
                                 </div>
                                 <div className="mt-2 flex flex-wrap items-center gap-2">
                                     <code className="break-all font-bold text-slate-800">{community.representativeInviteCode ?? '未発行'}</code>
@@ -161,15 +177,26 @@ export function OwnerAdminPanel({ communities }: { communities: ManagedCommunity
                                     <button key={months} disabled={isPending || !['poc', 'active'].includes(community.status)} onClick={() => run(() => extendCommunityAccess(community.id, months as 1 | 3 | 12))} className="rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm font-bold text-indigo-700 disabled:opacity-50">+{months}か月延長</button>
                                 ))}
                                 <Link href={`/community-admin?community=${community.id}`} className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-bold text-slate-700">会員を管理</Link>
-                                {community.status === 'trial' && community.activeCount === 0 && <button disabled={isPending} onClick={() => confirm('この未利用テストコミュニティと招待コードを完全に削除しますか？この操作は取り消せません。') && run(() => deleteUnusedTrialCommunity(community.id))} className="inline-flex items-center gap-2 rounded-xl border border-red-200 bg-white px-4 py-2 text-sm font-bold text-red-700 disabled:opacity-50"><Trash2 className="h-4 w-4" />コミュニティを削除する</button>}
-                                <button disabled={isPending || community.status === 'ended'} onClick={() => confirm('このコミュニティの契約を終了しますか？会員は直ちに利用できなくなり、個人データは30日後の削除対象になります。') && run(() => endCommunityAccess(community.id))} className="ml-auto inline-flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm font-bold text-red-700"><StopCircle className="h-4 w-4" />契約を終了する</button>
+                                <button disabled={isPending} onClick={() => requestConfirmation(community.status === 'trial' && community.activeCount === 0 ? { title: 'コミュニティを削除しますか？', description: '未利用のテストコミュニティと招待コードを完全に削除します。この操作は取り消せません。', confirmLabel: '完全に削除する', action: () => deleteUnusedTrialCommunity(community.id) } : { title: 'コミュニティを今すぐ完全削除しますか？', description: 'このコミュニティの会員一覧・招待コードを削除します。他コミュニティに所属していない会員は、アカウント・ポートフォリオ・CSV由来データも直ちに削除されます。この操作は取り消せません。', confirmLabel: '今すぐ完全削除する', action: () => forceDeleteCommunity(community.id) })} className="inline-flex items-center gap-2 rounded-xl border border-red-200 bg-white px-4 py-2 text-sm font-bold text-red-700 disabled:opacity-50"><Trash2 className="h-4 w-4" />コミュニティを削除する</button>
+                                <button disabled={isPending || community.status === 'ended'} onClick={() => requestConfirmation({ title: '契約を終了しますか？', description: '会員は直ちに利用できなくなります。個人データは30日間保留し、その後に自動削除します。保留期間中は会員管理から復旧できます。', confirmLabel: '契約を終了する', action: () => endCommunityAccess(community.id) })} className="ml-auto inline-flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm font-bold text-red-700 disabled:opacity-50"><StopCircle className="h-4 w-4" />{community.status === 'ended' ? '契約終了済み' : '契約を終了する'}</button>
                             </div>
                         </article>
                     ))}
                 </section>
             </div>
+            {confirmation && <ConfirmationDialog title={confirmation.title} description={confirmation.description} confirmLabel={confirmation.confirmLabel} onCancel={() => setConfirmation(null)} onConfirm={confirmAction} />}
         </main>
     );
+}
+
+function ConfirmationDialog({ title, description, confirmLabel, onCancel, onConfirm }: { title: string; description: string; confirmLabel: string; onCancel: () => void; onConfirm: () => void }) {
+    return <div className="fixed inset-0 z-[100] grid place-items-center bg-slate-950/40 p-4" role="dialog" aria-modal="true" aria-labelledby="confirmation-title">
+        <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl">
+            <h2 id="confirmation-title" className="text-xl font-black text-slate-900">{title}</h2>
+            <p className="mt-3 text-sm leading-6 text-slate-600">{description}</p>
+            <div className="mt-6 flex justify-end gap-3"><button onClick={onCancel} className="rounded-xl border border-slate-300 px-4 py-2.5 font-bold text-slate-700">キャンセル</button><button onClick={onConfirm} className="rounded-xl bg-red-600 px-4 py-2.5 font-bold text-white">{confirmLabel}</button></div>
+        </div>
+    </div>;
 }
 
 function CopyButton({ id, code, copied, onCopy, label }: { id: string; code: string; copied: boolean; onCopy: (id: string, code: string) => void; label: string }) {

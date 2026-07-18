@@ -410,6 +410,45 @@ export async function deleteUnusedTrialCommunity(communityId: string): Promise<A
     return { success: true, message: '未利用のテストコミュニティを削除しました' };
 }
 
+export async function forceDeleteCommunity(communityId: string): Promise<ActionResult> {
+    const { user } = await requirePlatformOwner();
+    const admin = createServiceRoleClient();
+    const { data: community } = await admin.from('communities').select('id, name').eq('id', communityId).maybeSingle();
+    if (!community) return { success: false, message: 'コミュニティが見つかりません' };
+
+    const { data: members } = await admin
+        .from('community_members')
+        .select('id, user_id, email')
+        .eq('community_id', communityId);
+    const uniqueUserIds = [...new Set((members ?? []).map((member) => member.user_id).filter((id): id is string => Boolean(id)))];
+    let deletedUsers = 0;
+    let preservedUsers = 0;
+
+    for (const userId of uniqueUserIds) {
+        const [{ count: otherMemberships }, { data: profile }] = await Promise.all([
+            admin.from('community_members').select('id', { count: 'exact', head: true }).eq('user_id', userId).neq('community_id', communityId),
+            admin.from('profiles').select('platform_role').eq('id', userId).maybeSingle(),
+        ]);
+        if ((otherMemberships ?? 0) > 0 || profile?.platform_role === 'owner') {
+            preservedUsers += 1;
+            continue;
+        }
+        const { error: deleteUserError } = await admin.auth.admin.deleteUser(userId);
+        if (deleteUserError) return { success: false, message: `一部ユーザーの完全削除に失敗しました: ${deleteUserError.message}` };
+        deletedUsers += 1;
+    }
+
+    await audit(admin, user.id, communityId, 'community_force_deleted', undefined, { deletedUsers, preservedUsers });
+    const { error } = await admin.from('communities').delete().eq('id', communityId);
+    if (error) return { success: false, message: error.message };
+    revalidatePath('/admin');
+    revalidatePath('/community-admin');
+    return {
+        success: true,
+        message: `コミュニティを完全削除しました。${deletedUsers}名のアカウント・個人データを削除し、他コミュニティに所属する${preservedUsers}名のデータは保持しました。`,
+    };
+}
+
 export async function addCommunityMembers(communityId: string, rawInput: string): Promise<ActionResult<{
     added: number;
     skipped: number;
