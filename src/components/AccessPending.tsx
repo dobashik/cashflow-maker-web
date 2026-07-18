@@ -1,7 +1,7 @@
 "use client";
 
 import Link from 'next/link';
-import { LogOut, ShieldAlert } from 'lucide-react';
+import { Home, LogOut, ShieldAlert } from 'lucide-react';
 import { createClient } from '@/utils/supabase/client';
 
 export function AccessPending({ message }: { message?: string }) {
@@ -24,6 +24,9 @@ export function AccessPending({ message }: { message?: string }) {
                     コミュニティ代表者に登録メールアドレスと利用期限をご確認ください。
                 </p>
                 <div className="mt-7 flex flex-col justify-center gap-3 sm:flex-row">
+                    <Link href="/?preview=1" className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 px-5 py-3 font-bold text-slate-600 hover:bg-slate-50">
+                        <Home className="h-4 w-4" />トップページへ戻る
+                    </Link>
                     <Link href="/join" className="rounded-xl bg-indigo-600 px-5 py-3 font-bold text-white hover:bg-indigo-700">
                         招待コードを入力する
                     </Link>
