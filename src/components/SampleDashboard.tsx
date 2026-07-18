@@ -5,8 +5,9 @@ import { Header } from "@/components/Header";
 import { HeroSection } from "@/components/HeroSection";
 import { DashboardContent } from "@/components/Dashboard";
 import { Footer } from "@/components/Footer";
+import Link from 'next/link';
 
-export function SampleDashboard() {
+export function SampleDashboard({ inviteRequired = false }: { inviteRequired?: boolean }) {
     const [animationKey, setAnimationKey] = useState(0);
 
     const handleRefreshAnimations = () => {
@@ -20,6 +21,13 @@ export function SampleDashboard() {
 
             {/* Spacer for fixed header */}
             <div className="h-20"></div>
+
+            {inviteRequired && (
+                <div className="mx-auto mt-4 flex w-[calc(100%-2rem)] max-w-5xl flex-col items-center justify-between gap-3 rounded-2xl border border-indigo-200 bg-indigo-50 px-5 py-4 text-sm text-indigo-950 shadow-sm sm:flex-row">
+                    <p><strong>初めて利用する方へ：</strong>コミュニティから受け取った招待コードを入力してから、Googleアカウントを登録してください。</p>
+                    <Link href="/join" className="shrink-0 rounded-xl bg-indigo-600 px-4 py-2 font-bold text-white hover:bg-indigo-700">招待コードを入力する</Link>
+                </div>
+            )}
 
             <HeroSection />
 

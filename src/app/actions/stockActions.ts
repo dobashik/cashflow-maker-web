@@ -509,8 +509,10 @@ export async function saveHoldingsToSupabase(
             updated_at: new Date().toISOString()
         }));
 
-        // Case A: Normal Mode (Not Append) -> ポートフォリオ全体を入れ替える。
-        // 1回目のCSVで全件を初期化し、2回目以降のCSVは追加モードで積み上げる。
+        // 保存対象ソースの既存行を一度入れ替える。
+        // 追加モードでは同一証券会社の既存データを combinedItems に取り込んで
+        // 集約済みなので、ここで入れ替えることで過去の重複行も確実に解消できる。
+        // 通常モードはポートフォリオ全体を入れ替える。
         if (!isAppendMode) {
             const { error: deleteError } = await supabase
                 .from('holdings')
@@ -520,6 +522,17 @@ export async function saveHoldingsToSupabase(
             if (deleteError) {
                 console.error("Delete Existing Source Error:", deleteError);
                 return { success: false, message: "既存データの更新（削除）に失敗しました" };
+            }
+        } else {
+            const { error: deleteError } = await supabase
+                .from('holdings')
+                .delete()
+                .eq('user_id', user.id)
+                .eq('source', targetSource);
+
+            if (deleteError) {
+                console.error("Delete Existing Source Error:", deleteError);
+                return { success: false, message: "既存データの更新（重複整理）に失敗しました" };
             }
         }
 
