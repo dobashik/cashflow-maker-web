@@ -2,8 +2,9 @@ name: Supabase Keep Alive
 
 on:
   schedule:
-    # 毎日、日本時間 06:30 (UTC 21:30) に実行
-    - cron: '30 21 * * *'
+    # 7日間の利用実績を安定して作るため、1日3回DBへ到達する。
+    # 日本時間 02:17 / 10:17 / 18:17（UTC 17:17 / 01:17 / 09:17）
+    - cron: '17 1,9,17 * * *'
   workflow_dispatch: # 手動実行ボタンも残しておきます
 
 jobs:
@@ -19,7 +20,10 @@ jobs:
           -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}"
 
       - name: Purge expired community data after its 30-day recovery period
-        if: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY != '' }}
+        # secrets は if 条件内で直接参照できないため、環境変数を経由する。
+        if: ${{ env.SUPABASE_SERVICE_ROLE_KEY != '' }}
+        env:
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
           curl --fail-with-body --retry 3 --max-time 30 -i -X POST "${{ secrets.SUPABASE_URL }}/rest/v1/rpc/purge_expired_community_accounts" \
           -H "apikey: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
