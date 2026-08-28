@@ -35,8 +35,7 @@ export default function TokushohoPage() {
                         <div className="border-b border-slate-100 pb-4">
                             <h2 className="text-sm font-bold text-slate-500 mb-1">所在地</h2>
                             <p className="text-slate-900">
-                                〒107-0062<br />
-                                東京都港区南青山3丁目1番36号青山丸竹ビル6F
+                                請求があった場合、遅滞なく開示いたします。
                             </p>
                         </div>
 
