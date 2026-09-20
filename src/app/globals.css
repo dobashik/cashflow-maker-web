@@ -53,3 +53,28 @@ button:disabled {
 .animate-shimmer {
   animation: shimmer 1.5s infinite;
 }
+
+/* 海外分配金レイヤーの波。日本株の波と位相をずらして重なりを見せる。 */
+@keyframes wave-reverse {
+  0% {
+    transform: translateX(-50%);
+  }
+
+  100% {
+    transform: translateX(0);
+  }
+}
+
+.animate-wave-gold {
+  animation: wave-reverse 7s linear infinite;
+}
+
+/* 動きを減らす設定のときは、波もきらめきも止める */
+@media (prefers-reduced-motion: reduce) {
+
+  .animate-wave,
+  .animate-wave-gold,
+  .animate-shimmer {
+    animation: none;
+  }
+}

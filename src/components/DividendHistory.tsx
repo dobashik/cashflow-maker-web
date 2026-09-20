@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Banknote, CheckCircle2, Clock3, FileText, RefreshCcw, Trash2, UploadCloud } from 'lucide-react';
-import { loadCSV, parseSBIDividendPaymentCSV } from '@/utils/csvParser';
+import { detectDividendCsvKind, loadCSV, parseSBIDividendPaymentCSV, parseSBIForeignDividendCSV } from '@/utils/csvParser';
 import {
     deleteDividendImportBatch,
     getDividendDashboardData,
@@ -12,6 +12,7 @@ import {
 } from '@/app/actions/dividendActions';
 import type { DividendDashboardData, DividendImportBatch, DividendPayment, DividendSummary } from '@/app/actions/dividendActions';
 import { MONTHLY_DIVIDENDS_DATA, TOTAL_DIVIDENDS_ANNUAL } from '@/lib/mockData';
+import { SAMPLE_OVERSEAS_ANNUAL_DIVIDEND } from '@/lib/overseas';
 
 type MonthlyDividend = {
     month: string;
@@ -23,7 +24,8 @@ type MonthlyDividend = {
 type DividendHistoryProps = {
     isSampleMode?: boolean;
     onMonthlyDataUpdate?: (data: MonthlyDividend[]) => void;
-    onAnnualDataUpdate?: (annualAmount: number, year: number) => void;
+    /** 直近1年の配当金。海外分（円換算・税引後）を内訳として渡す。 */
+    onAnnualDataUpdate?: (annual: { total: number; overseas: number }, year: number) => void;
 };
 
 const emptySummary: DividendSummary = {
@@ -35,6 +37,8 @@ const emptySummary: DividendSummary = {
     monthlyTotals: Array.from({ length: 12 }, (_, index) => ({ month: index + 1, amount: 0 })),
     year: new Date().getFullYear(),
     availableYears: [new Date().getFullYear()],
+    domesticAmount: 0,
+    overseasAmount: 0,
 };
 
 const emptyDashboardData: DividendDashboardData = {
@@ -70,6 +74,10 @@ function createSampleDashboardData(year: number): DividendDashboardData {
                 processedAt: index < 8 ? `${base}-${dayA}T12:00:00.000Z` : null,
                 processedNote: null,
                 createdAt: `${base}-${dayA}T03:00:00.000Z`,
+                market: 'JP' as const,
+                currency: 'JPY',
+                amountForeign: null,
+                ticker: null,
             },
             {
                 id: `sample-payment-${month}-b`,
@@ -83,6 +91,10 @@ function createSampleDashboardData(year: number): DividendDashboardData {
                 processedAt: index < 8 ? `${base}-${dayB}T12:00:00.000Z` : null,
                 processedNote: null,
                 createdAt: `${base}-${dayB}T03:00:00.000Z`,
+                market: 'JP' as const,
+                currency: 'JPY',
+                amountForeign: null,
+                ticker: null,
             },
         ];
     });
@@ -165,12 +177,20 @@ export function DividendHistory({ isSampleMode = false, onMonthlyDataUpdate, onA
     useEffect(() => {
         if (!onAnnualDataUpdate) return;
         if (isSampleMode) {
-            onAnnualDataUpdate(TOTAL_DIVIDENDS_ANNUAL, selectedYear);
+            onAnnualDataUpdate({
+                total: TOTAL_DIVIDENDS_ANNUAL + SAMPLE_OVERSEAS_ANNUAL_DIVIDEND,
+                overseas: SAMPLE_OVERSEAS_ANNUAL_DIVIDEND,
+            }, selectedYear);
             return;
         }
-        const rollingAnnualAmount = buildRollingDividendCalendarData(dashboardData.payments)
+
+        const sumRolling = (payments: DividendPayment[]) => buildRollingDividendCalendarData(payments)
             .reduce((sum, item) => sum + item.amount, 0);
-        onAnnualDataUpdate(rollingAnnualAmount, new Date().getFullYear());
+
+        onAnnualDataUpdate({
+            total: sumRolling(dashboardData.payments),
+            overseas: sumRolling(dashboardData.payments.filter(payment => payment.market === 'US')),
+        }, new Date().getFullYear());
     }, [dashboardData.payments, isSampleMode, onAnnualDataUpdate, selectedYear]);
 
     const visiblePayments = useMemo(
@@ -196,8 +216,26 @@ export function DividendHistory({ isSampleMode = false, onMonthlyDataUpdate, onA
 
         try {
             const csvContent = await loadCSV(file);
-            const payments = parseSBIDividendPaymentCSV(csvContent);
-            const result = await saveDividendPaymentsFromSBI(payments, file.name);
+            // 円貨入出金明細（日本株）と配当金・分配金（海外）を自動で見分ける
+            const kind = detectDividendCsvKind(csvContent);
+
+            if (!kind) {
+                setError('CSVの形式を判別できませんでした。SBIの「入出金明細」または「配当金・分配金」のCSVを選んでください。');
+                return;
+            }
+
+            const payments = kind === 'US'
+                ? parseSBIForeignDividendCSV(csvContent)
+                : parseSBIDividendPaymentCSV(csvContent);
+
+            if (payments.length === 0) {
+                setError(kind === 'US'
+                    ? '海外の配当金データが見つかりませんでした。国内株式のみのCSVの場合は「入出金明細」から取り込んでください。'
+                    : '配当金データが見つかりませんでした。');
+                return;
+            }
+
+            const result = await saveDividendPaymentsFromSBI(payments, file.name, kind);
 
             if (!result.success) {
                 setError(result.message);
@@ -385,6 +423,18 @@ export function DividendHistory({ isSampleMode = false, onMonthlyDataUpdate, onA
                 <SummaryCard label="未処理" value={formatYen(dashboardData.summary.unprocessedAmount)} sub={`${dashboardData.summary.unprocessedCount}件`} tone="amber" />
             </div>
 
+            {dashboardData.summary.overseasAmount > 0 && (
+                <div className="mt-3 flex flex-wrap items-center gap-2 text-xs font-bold">
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-sky-50 px-3 py-1.5 text-sky-700">
+                        🇯🇵 日本株 {formatYen(dashboardData.summary.domesticAmount)}
+                    </span>
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-3 py-1.5 text-amber-700">
+                        🌎 海外 {formatYen(dashboardData.summary.overseasAmount)}
+                    </span>
+                    <span className="text-slate-400">※すべて受取時の円換算額（税引後）</span>
+                </div>
+            )}
+
             <div className="mt-6 grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
                 <div className="min-w-0">
                     <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
@@ -448,7 +498,20 @@ export function DividendHistory({ isSampleMode = false, onMonthlyDataUpdate, onA
                                             </button>
                                         </td>
                                         <td className="px-4 py-3 whitespace-nowrap">{new Date(`${payment.paymentDate}T00:00:00`).toLocaleDateString('ja-JP')}</td>
-                                        <td className="px-4 py-3 font-bold text-slate-700">{payment.stockName}</td>
+                                        <td className="px-4 py-3 font-bold text-slate-700">
+                                            <span className="inline-flex items-center gap-2">
+                                                <span
+                                                    className={`rounded-full px-2 py-0.5 text-[10px] font-black ${payment.market === 'US'
+                                                        ? 'bg-amber-100 text-amber-700'
+                                                        : 'bg-sky-100 text-sky-700'
+                                                        }`}
+                                                    title={payment.market === 'US' ? '海外' : '日本株'}
+                                                >
+                                                    {payment.market === 'US' ? '🌎 海外' : '🇯🇵 日本'}
+                                                </span>
+                                                {payment.stockName}
+                                            </span>
+                                        </td>
                                         <td className="px-4 py-3">
                                             <span className={`rounded-full px-2 py-1 text-[10px] font-bold ${payment.taxCategory === 'NISA'
                                                 ? 'bg-emerald-50 text-emerald-700'
@@ -457,7 +520,14 @@ export function DividendHistory({ isSampleMode = false, onMonthlyDataUpdate, onA
                                                 {taxLabel(payment.taxCategory)}
                                             </span>
                                         </td>
-                                        <td className="px-4 py-3 text-right font-bold text-indigo-700">{formatYen(payment.amount)}</td>
+                                        <td className="px-4 py-3 text-right font-bold text-indigo-700">
+                                            {formatYen(payment.amount)}
+                                            {payment.amountForeign !== null && payment.amountForeign > 0 && (
+                                                <div className="text-[10px] font-bold text-slate-400">
+                                                    {payment.amountForeign.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {payment.currency}
+                                                </div>
+                                            )}
+                                        </td>
                                     </tr>
                                 ))}
                                 {visiblePayments.length === 0 && (
@@ -558,9 +628,14 @@ function buildClientSummary(payments: DividendPayment[], selectedYear: number): 
     let unprocessedAmount = 0;
     let processedCount = 0;
     let unprocessedCount = 0;
+    let domesticAmount = 0;
+    let overseasAmount = 0;
 
     payments.forEach(payment => {
         totalAmount += payment.amount;
+        if (payment.market === 'US') overseasAmount += payment.amount;
+        else domesticAmount += payment.amount;
+
         if (payment.isProcessed) {
             processedAmount += payment.amount;
             processedCount += 1;
@@ -584,6 +659,8 @@ function buildClientSummary(payments: DividendPayment[], selectedYear: number): 
         monthlyTotals,
         year: selectedYear,
         availableYears: availableYears.length > 0 ? availableYears : [selectedYear],
+        domesticAmount,
+        overseasAmount,
     };
 }
 

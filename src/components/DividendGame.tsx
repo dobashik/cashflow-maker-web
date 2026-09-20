@@ -9,7 +9,10 @@ import { DEFAULT_EXPENSE_ITEMS } from '@/lib/expenseData';
 import type { ExpenseItem } from '@/lib/expenseData';
 
 type DividendGameProps = {
+    /** 年間配当金の合計（日本株＋海外。いずれも円・税引後） */
     annualDividendAmount?: number;
+    /** うち海外（米国ETFなど）の分。上積みの金色レイヤーとして描く。 */
+    overseasAnnualDividendAmount?: number;
     dividendYear?: number;
     isSampleMode?: boolean;
 };
@@ -27,7 +30,11 @@ const toDraftItems = (items: ExpenseItem[]): DraftExpenseItem[] => items.map((it
 
 const toExpenseItems = (items: DraftExpenseItem[]): ExpenseItem[] => items.map(({ clientId: _clientId, ...item }) => item);
 
-export function DividendGame({ annualDividendAmount = 0, isSampleMode = false }: DividendGameProps) {
+export function DividendGame({
+    annualDividendAmount = 0,
+    overseasAnnualDividendAmount = 0,
+    isSampleMode = false,
+}: DividendGameProps) {
     const [expenseItems, setExpenseItems] = useState<ExpenseItem[]>(DEFAULT_EXPENSE_ITEMS);
     const [draftItems, setDraftItems] = useState<DraftExpenseItem[]>(() => toDraftItems(DEFAULT_EXPENSE_ITEMS));
     const [isEditing, setIsEditing] = useState(false);
@@ -38,13 +45,34 @@ export function DividendGame({ annualDividendAmount = 0, isSampleMode = false }:
         () => expenseItems.reduce((sum, item) => sum + item.amount, 0),
         [expenseItems]
     );
+    // 海外分は「上積み」として扱う。合計は総額、内訳は日本株と海外に分ける。
+    const overseasAnnual = Math.max(0, Math.min(overseasAnnualDividendAmount, annualDividendAmount));
+    const domesticAnnual = Math.max(0, annualDividendAmount - overseasAnnual);
+
     const monthlyDividend = Math.round(annualDividendAmount / 12);
-    const coveragePercent = totalExpenses > 0 ? Math.min(100, Math.round((monthlyDividend / totalExpenses) * 100)) : 0;
+    const monthlyDomestic = Math.round(domesticAnnual / 12);
+    const monthlyOverseas = Math.round(overseasAnnual / 12);
+    const hasOverseas = monthlyOverseas > 0;
+
+    const rawCoverage = (amount: number) => (totalExpenses > 0 ? (amount / totalExpenses) * 100 : 0);
+    const totalCoverageExact = rawCoverage(monthlyDividend);
+    const domesticCoverageExact = rawCoverage(monthlyDomestic);
+
+    // 表示用のパーセント（100%を超えたら超えた数字をそのまま見せる）
+    const coveragePercent = Math.round(totalCoverageExact);
+    const domesticPercent = Math.round(domesticCoverageExact);
+    const overseasPercent = Math.max(0, coveragePercent - domesticPercent);
+
+    // 水位は100%まで。日本株の水の上に海外分を積む。
+    const domesticHeight = Math.min(100, domesticCoverageExact);
+    const overseasHeight = Math.max(0, Math.min(100 - domesticHeight, totalCoverageExact - domesticCoverageExact));
+    const isOverflowing = totalCoverageExact >= 100;
 
     // Count-up animation for percentage
     const motionValue = useSpring(0, { stiffness: 50, damping: 20 });
     const springValue = useTransform(motionValue, (value) => Math.round(value));
     const [displayPercent, setDisplayPercent] = useState(0);
+    const [showOverseasBadge, setShowOverseasBadge] = useState(false);
 
     // Initial check for in-view to trigger animations
     const ref = useRef(null);
@@ -61,13 +89,26 @@ export function DividendGame({ annualDividendAmount = 0, isSampleMode = false }:
     }, []);
 
     useEffect(() => {
-        if (isInView) {
-            // Delay the counter slightly to match water rise
-            setTimeout(() => {
+        if (!isInView) return;
+
+        // 1段目: 日本株の水が上がりきるのに合わせて日本株のカバー率まで数える
+        const firstStage = setTimeout(() => {
+            motionValue.set(hasOverseas ? domesticPercent : coveragePercent);
+        }, 1000);
+
+        // 2段目: 海外分が注がれたあと、合計まで続けて数え上げる
+        const secondStage = hasOverseas
+            ? setTimeout(() => {
                 motionValue.set(coveragePercent);
-            }, 1000);
-        }
-    }, [isInView, coveragePercent, motionValue]);
+                setShowOverseasBadge(true);
+            }, 2900)
+            : undefined;
+
+        return () => {
+            clearTimeout(firstStage);
+            if (secondStage) clearTimeout(secondStage);
+        };
+    }, [isInView, coveragePercent, domesticPercent, hasOverseas, motionValue]);
 
     useEffect(() => {
         const unsubscribe = springValue.on("change", (latest) => {
@@ -203,10 +244,10 @@ export function DividendGame({ annualDividendAmount = 0, isSampleMode = false }:
                         {/* Simple bubbles/sparkles background */}
                         <div className="absolute inset-0 bg-slate-50"></div>
 
-                        {/* Water */}
+                        {/* Water (日本株) */}
                         <motion.div
                             initial={{ height: '0%' }}
-                            animate={isInView ? { height: `${coveragePercent}%` } : { height: '0%' }}
+                            animate={isInView ? { height: `${domesticHeight}%` } : { height: '0%' }}
                             transition={{ duration: 2.5, ease: "easeInOut", delay: 1.0 }}
                             className="absolute bottom-0 w-full bg-gradient-to-t from-cyan-500 via-sky-400 to-blue-300 opacity-90"
                         >
@@ -217,6 +258,43 @@ export function DividendGame({ annualDividendAmount = 0, isSampleMode = false }:
                                 </svg>
                             </div>
                         </motion.div>
+
+                        {/* Water (海外ETFの上積み) */}
+                        {hasOverseas && (
+                            <motion.div
+                                initial={{ height: '0%' }}
+                                animate={isInView ? { height: `${overseasHeight}%` } : { height: '0%' }}
+                                transition={{ duration: 1.6, ease: "easeInOut", delay: 3.0 }}
+                                style={{ bottom: `${domesticHeight}%` }}
+                                className="absolute w-full bg-gradient-to-t from-amber-500 via-amber-400 to-yellow-300 opacity-95"
+                            >
+                                <div className="absolute -top-5 left-0 w-[200%] h-8 animate-wave-gold">
+                                    <svg className="w-full h-full fill-yellow-300" viewBox="0 0 1200 120" preserveAspectRatio="none">
+                                        <path d="M321.39,56.44c58-10.79,114.16-30.13,172-41.86,82.39-16.72,168.19-17.73,250.45-.39C823.78,31,906.67,72,985.66,92.83c70.05,18.48,146.53,26.09,214.34,3V0H0V27.35A600.21,600.21,0,0,0,321.39,56.44Z"></path>
+                                    </svg>
+                                </div>
+                            </motion.div>
+                        )}
+
+                        {/* 2つの層の境目。色だけに頼らず、光の線とラベルで区切りを示す。 */}
+                        {hasOverseas && (
+                            <motion.div
+                                initial={{ opacity: 0 }}
+                                animate={isInView ? { opacity: 1 } : { opacity: 0 }}
+                                transition={{ delay: 3.2, duration: 0.6 }}
+                                style={{ bottom: `${domesticHeight}%` }}
+                                className="absolute left-0 z-10 w-full"
+                            >
+                                <div className="h-px w-full bg-white/70 shadow-[0_0_12px_2px_rgba(253,224,71,0.9)]" />
+                                <motion.div
+                                    animate={{ scale: [1, 1.25, 1], rotate: [0, 12, 0] }}
+                                    transition={{ repeat: Infinity, duration: 2.4, ease: "easeInOut" }}
+                                    className="absolute -top-3 right-3"
+                                >
+                                    <Sparkles className="h-5 w-5 text-white drop-shadow-[0_0_6px_rgba(251,191,36,0.9)]" />
+                                </motion.div>
+                            </motion.div>
+                        )}
 
                         {/* Percentage Text Float */}
                         <div className="absolute inset-0 flex flex-col items-center justify-center z-10 pointer-events-none">
@@ -230,6 +308,29 @@ export function DividendGame({ annualDividendAmount = 0, isSampleMode = false }:
                                 <div className="text-6xl font-black text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-cyan-600 tracking-tighter tabular-nums">
                                     {displayPercent}<span className="text-3xl ml-1 text-indigo-400">%</span>
                                 </div>
+
+                                {/* 海外分の上積みバッジ */}
+                                {hasOverseas && showOverseasBadge && (
+                                    <motion.div
+                                        initial={{ scale: 0, y: 8, opacity: 0 }}
+                                        animate={{ scale: 1, y: 0, opacity: 1 }}
+                                        transition={{ type: "spring" as const, bounce: 0.6, duration: 0.7 }}
+                                        className="mx-auto mt-2 inline-flex items-center gap-1 rounded-full bg-gradient-to-r from-amber-400 to-yellow-400 px-3 py-1 text-sm font-black text-amber-950 shadow-lg shadow-amber-200"
+                                    >
+                                        🌎 海外 +{overseasPercent}%
+                                    </motion.div>
+                                )}
+
+                                {isOverflowing && (
+                                    <motion.div
+                                        initial={{ scale: 0, opacity: 0 }}
+                                        animate={{ scale: 1, opacity: 1 }}
+                                        transition={{ delay: hasOverseas ? 3.6 : 2.4, type: "spring" as const, bounce: 0.6 }}
+                                        className="mt-2 text-xs font-black text-amber-600"
+                                    >
+                                        👑 生活費をすべてカバー！
+                                    </motion.div>
+                                )}
                             </motion.div>
                         </div>
 
@@ -254,9 +355,29 @@ export function DividendGame({ annualDividendAmount = 0, isSampleMode = false }:
                     <div className="mt-6 text-center">
                         <div className="text-xs text-indigo-400 font-bold tracking-wider mb-1">ひと月あたりの配当収入</div>
                         <div className="text-3xl font-black text-indigo-700">¥{monthlyDividend.toLocaleString()}</div>
-                        <div className="mt-1 text-xs font-bold text-slate-400">
+
+                        {/* 内訳。色の違いだけに頼らないよう、ラベルと金額でも示す。 */}
+                        {hasOverseas && (
+                            <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
+                                <span className="inline-flex items-center gap-1.5 rounded-full bg-sky-50 px-3 py-1 text-xs font-bold text-sky-700">
+                                    <span className="h-2.5 w-2.5 rounded-full bg-gradient-to-t from-cyan-500 to-blue-300" />
+                                    🇯🇵 日本株 ¥{monthlyDomestic.toLocaleString()}
+                                </span>
+                                <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-3 py-1 text-xs font-bold text-amber-700">
+                                    <span className="h-2.5 w-2.5 rounded-full bg-gradient-to-t from-amber-500 to-yellow-300" />
+                                    🌎 海外 ¥{monthlyOverseas.toLocaleString()}
+                                </span>
+                            </div>
+                        )}
+
+                        <div className="mt-2 text-xs font-bold text-slate-400">
                             {isSampleMode ? 'サンプル保有銘柄の年間配当見込額 ÷ 12ヶ月' : '直近1年ベースの配当金総額 ÷ 12ヶ月'}
                         </div>
+                        {hasOverseas && (
+                            <div className="mt-1 text-[11px] font-bold text-slate-400">
+                                海外分は証券会社の円換算額（税引後）で合算しています
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>

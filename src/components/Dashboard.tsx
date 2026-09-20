@@ -11,6 +11,7 @@ import { DividendHistory } from '@/components/DividendHistory';
 import { Footer } from '@/components/Footer';
 
 import { MONTHLY_DIVIDENDS_DATA, TOTAL_DIVIDENDS_ANNUAL, Holding } from '@/lib/mockData';
+import { SAMPLE_OVERSEAS_ANNUAL_DIVIDEND } from '@/lib/overseas';
 
 type MonthlyDividend = {
     month: string;
@@ -23,6 +24,7 @@ export function DashboardContent({ animationKey = 0, isSampleMode = false }: { a
     const [sharedHoldings, setSharedHoldings] = useState<Holding[]>([]);
     const [actualMonthlyDividends, setActualMonthlyDividends] = useState<MonthlyDividend[]>([]);
     const [actualAnnualDividend, setActualAnnualDividend] = useState(0);
+    const [actualOverseasAnnualDividend, setActualOverseasAnnualDividend] = useState(0);
     const [dividendYear, setDividendYear] = useState(new Date().getFullYear());
 
     return (
@@ -36,7 +38,8 @@ export function DashboardContent({ animationKey = 0, isSampleMode = false }: { a
                     transition={{ duration: 0.6 }}
                 >
                     <DividendGame
-                        annualDividendAmount={isSampleMode ? TOTAL_DIVIDENDS_ANNUAL : actualAnnualDividend}
+                        annualDividendAmount={isSampleMode ? TOTAL_DIVIDENDS_ANNUAL + SAMPLE_OVERSEAS_ANNUAL_DIVIDEND : actualAnnualDividend}
+                        overseasAnnualDividendAmount={isSampleMode ? SAMPLE_OVERSEAS_ANNUAL_DIVIDEND : actualOverseasAnnualDividend}
                         dividendYear={dividendYear}
                         isSampleMode={isSampleMode}
                     />
@@ -86,8 +89,9 @@ export function DashboardContent({ animationKey = 0, isSampleMode = false }: { a
                     <DividendHistory
                         isSampleMode={isSampleMode}
                         onMonthlyDataUpdate={setActualMonthlyDividends}
-                        onAnnualDataUpdate={(annualAmount, year) => {
-                            setActualAnnualDividend(annualAmount);
+                        onAnnualDataUpdate={(annual, year) => {
+                            setActualAnnualDividend(annual.total);
+                            setActualOverseasAnnualDividend(annual.overseas);
                             setDividendYear(year);
                         }}
                     />

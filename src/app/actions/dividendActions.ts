@@ -1,7 +1,7 @@
 'use server';
 
 import { createClient } from '@/utils/supabase/server';
-import type { ImportedDividendPayment } from '@/utils/csvParser';
+import type { DividendMarket, ImportedDividendPayment } from '@/utils/csvParser';
 
 export type DividendPayment = {
     id: string;
@@ -9,12 +9,17 @@ export type DividendPayment = {
     broker: 'SBI';
     paymentDate: string;
     stockName: string;
+    /** 受取額（円・税引後）。海外分は証券会社の円換算額をそのまま使う。 */
     amount: number;
     taxCategory: 'NISA' | 'Taxable' | 'Unknown';
     isProcessed: boolean;
     processedAt: string | null;
     processedNote: string | null;
     createdAt: string;
+    market: DividendMarket;
+    currency: string;
+    amountForeign: number | null;
+    ticker: string | null;
 };
 
 export type DividendImportBatch = {
@@ -37,6 +42,8 @@ export type DividendSummary = {
     monthlyTotals: { month: number; amount: number }[];
     year: number;
     availableYears: number[];
+    domesticAmount: number;
+    overseasAmount: number;
 };
 
 export type DividendDashboardData = {
@@ -63,9 +70,16 @@ const normalizeIncomingPayment = (payment: ImportedDividendPayment): ImportedDiv
         broker: 'SBI',
         paymentDate,
         stockName,
-        amount: Math.round(amount),
+        // 海外分は円換算額に小数が入るため、切り捨てずに小数第2位まで残す
+        amount: Math.round(amount * 100) / 100,
         taxCategory,
         sourceFingerprint,
+        market: payment.market === 'US' ? 'US' : 'JP',
+        currency: payment.currency || 'JPY',
+        amountForeign: Number(payment.amountForeign) > 0 ? Number(payment.amountForeign) : undefined,
+        ticker: payment.ticker || undefined,
+        quantity: Number(payment.quantity) > 0 ? Number(payment.quantity) : undefined,
+        accountLabel: payment.accountLabel || undefined,
     };
 };
 
@@ -81,8 +95,13 @@ const buildSummary = (payments: DividendPayment[], selectedYear = new Date().get
     let processedCount = 0;
     let unprocessedCount = 0;
 
+    let domesticAmount = 0;
+    let overseasAmount = 0;
+
     payments.forEach(payment => {
         totalAmount += payment.amount;
+        if (payment.market === 'US') overseasAmount += payment.amount;
+        else domesticAmount += payment.amount;
 
         if (payment.isProcessed) {
             processedAmount += payment.amount;
@@ -106,6 +125,8 @@ const buildSummary = (payments: DividendPayment[], selectedYear = new Date().get
         monthlyTotals,
         year: selectedYear,
         availableYears: availableYears.length > 0 ? availableYears : [selectedYear],
+        domesticAmount,
+        overseasAmount,
     };
 };
 
@@ -130,7 +151,7 @@ export async function getDividendDashboardData(selectedYear = new Date().getFull
     const [paymentsResult, batchesResult] = await Promise.all([
         supabase
             .from('dividend_payments')
-            .select('id, batch_id, broker, payment_date, stock_name, amount, tax_category, is_processed, processed_at, processed_note, created_at')
+            .select('id, batch_id, broker, payment_date, stock_name, amount, tax_category, is_processed, processed_at, processed_note, created_at, market, currency, amount_foreign, ticker')
             .eq('user_id', user.id)
             .order('payment_date', { ascending: false })
             .order('created_at', { ascending: false }),
@@ -158,6 +179,10 @@ export async function getDividendDashboardData(selectedYear = new Date().getFull
         processedAt: row.processed_at,
         processedNote: row.processed_note,
         createdAt: row.created_at,
+        market: row.market === 'US' ? 'US' : 'JP',
+        currency: row.currency || 'JPY',
+        amountForeign: row.amount_foreign !== null && row.amount_foreign !== undefined ? Number(row.amount_foreign) : null,
+        ticker: row.ticker || null,
     }));
 
     const batches: DividendImportBatch[] = (batchesResult.data || []).map(row => ({
@@ -183,7 +208,8 @@ export async function getDividendDashboardData(selectedYear = new Date().getFull
 
 export async function saveDividendPaymentsFromSBI(
     incomingPayments: ImportedDividendPayment[],
-    fileName?: string
+    fileName?: string,
+    market: DividendMarket = 'JP'
 ): Promise<{
     success: boolean;
     message: string;
@@ -250,6 +276,7 @@ export async function saveDividendPaymentsFromSBI(
         .insert({
             user_id: user.id,
             broker: 'SBI',
+            market,
             file_name: fileName || null,
             imported_count: newPayments.length,
             skipped_duplicate_count: skippedDuplicateCount,
@@ -274,6 +301,12 @@ export async function saveDividendPaymentsFromSBI(
             amount: payment.amount,
             tax_category: payment.taxCategory,
             source_fingerprint: payment.sourceFingerprint,
+            market: payment.market || market,
+            currency: payment.currency || (market === 'US' ? 'USD' : 'JPY'),
+            amount_foreign: payment.amountForeign ?? null,
+            ticker: payment.ticker ?? null,
+            quantity: payment.quantity ?? null,
+            account_label: payment.accountLabel ?? null,
         }));
 
         const { error: insertError } = await supabase

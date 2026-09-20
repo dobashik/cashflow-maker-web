@@ -1,4 +1,4 @@
-import { TrendingUp, MoreHorizontal, FileDown, RefreshCcw, AlertTriangle, UploadCloud, Trash2, Pencil, ExternalLink, Calendar, Banknote, Lock, Sparkles, History as HistoryIcon, List, GitCompare, Clock3, FileText, ChevronDown } from 'lucide-react';
+import { TrendingUp, MoreHorizontal, FileDown, RefreshCcw, AlertTriangle, UploadCloud, Trash2, Pencil, ExternalLink, Calendar, Banknote, Lock, Sparkles, History as HistoryIcon, List, GitCompare, Clock3, FileText, ChevronDown, Globe2 } from 'lucide-react';
 import { HOLDINGS, Holding } from '@/lib/mockData';
 import { motion, AnimatePresence, Variants } from 'framer-motion';
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
@@ -7,6 +7,7 @@ import { createClient } from '@/utils/supabase/client';
 import { updateAllSectorData, updateHoldingAnalysisData, saveHoldingsToSupabase, deleteAllHoldings, deleteHoldingsBySource, updateHoldingDividend, getPortfolioHistory, deletePortfolioHistory } from '@/app/actions/stockActions';
 import type { PortfolioHistory } from '@/app/actions/stockActions';
 import { checkPremiumAccess } from '@/app/actions/subscriptionActions';
+import { OverseasHoldings } from '@/components/OverseasHoldings';
 
 import {
     DropdownMenu,
@@ -302,7 +303,7 @@ export function HoldingsTable({ isSampleMode = false, onDataUpdate, onUpgradeCli
     const [isLoading, setIsLoading] = useState(false);
     const [isAppendMode, setIsAppendMode] = useState(false);
     const [activeHistoryId, setActiveHistoryId] = useState<string | null>(null);
-    const [activeTab, setActiveTab] = useState<'current' | 'history'>('current');
+    const [activeTab, setActiveTab] = useState<'current' | 'overseas' | 'history'>('current');
     const [history, setHistory] = useState<PortfolioHistory[]>([]);
     const [isHistoryLoading, setIsHistoryLoading] = useState(false);
     const [historyError, setHistoryError] = useState('');
@@ -966,7 +967,17 @@ export function HoldingsTable({ isSampleMode = false, onDataUpdate, onUpgradeCli
                         : 'border-transparent text-slate-400 hover:text-slate-600'
                         }`}
                 >
-                    <List className="h-4 w-4" /> 現在の保有株式
+                    <List className="h-4 w-4" /> 🇯🇵 日本株
+                </button>
+                <button
+                    type="button"
+                    onClick={() => setActiveTab('overseas')}
+                    className={`flex items-center gap-2 border-b-2 px-3 py-2 text-sm font-bold transition-colors ${activeTab === 'overseas'
+                        ? 'border-amber-500 text-amber-600'
+                        : 'border-transparent text-slate-400 hover:text-slate-600'
+                        }`}
+                >
+                    <Globe2 className="h-4 w-4" /> 🌎 海外ETF
                 </button>
                 <button
                     type="button"
@@ -1192,6 +1203,8 @@ export function HoldingsTable({ isSampleMode = false, onDataUpdate, onUpgradeCli
                         </table>
                     </div>
                 </>
+            ) : activeTab === 'overseas' ? (
+                <OverseasHoldings isSampleMode={isSampleMode} />
             ) : (
                 <div className="min-h-0 flex-grow overflow-auto rounded-xl border border-slate-100 bg-slate-50/60 p-4">
                     {isHistoryLoading && history.length === 0 ? (
