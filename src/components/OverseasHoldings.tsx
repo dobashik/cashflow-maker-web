@@ -93,6 +93,8 @@ const recalcDraft = (draft: DraftHolding): DraftHolding => {
 export function OverseasHoldings({ isSampleMode = false, onDataUpdate }: OverseasHoldingsProps) {
     const [holdings, setHoldings] = useState<OverseasHolding[]>(() => (isSampleMode ? SAMPLE_OVERSEAS_HOLDINGS : []));
     const [isLoading, setIsLoading] = useState(false);
+    // 初回読み込み前の空配列を親へ伝えると、合計資産が一瞬0になるため読み込み後だけ通知する
+    const [hasLoaded, setHasLoaded] = useState(isSampleMode);
     const [isSaving, setIsSaving] = useState(false);
     const [error, setError] = useState('');
     const [message, setMessage] = useState('');
@@ -117,6 +119,7 @@ export function OverseasHoldings({ isSampleMode = false, onDataUpdate }: Oversea
         const result = await getOverseasHoldings();
         if (result.success) {
             setHoldings(result.holdings);
+            setHasLoaded(true);
         } else {
             setError(result.message || '海外銘柄の取得に失敗しました');
         }
@@ -128,8 +131,8 @@ export function OverseasHoldings({ isSampleMode = false, onDataUpdate }: Oversea
     }, [loadHoldings]);
 
     useEffect(() => {
-        onDataUpdate?.(holdings);
-    }, [holdings, onDataUpdate]);
+        if (hasLoaded) onDataUpdate?.(holdings);
+    }, [hasLoaded, holdings, onDataUpdate]);
 
     const summary = useMemo(() => ({
         valuation: totalValuationJpy(holdings),

@@ -6,8 +6,11 @@ import { parseRakutenCSV, parseSBICSV, parseAnalysisCSV, loadCSV } from '@/utils
 import { createClient } from '@/utils/supabase/client';
 import { updateAllSectorData, updateHoldingAnalysisData, saveHoldingsToSupabase, deleteAllHoldings, deleteHoldingsBySource, updateHoldingDividend, getPortfolioHistory, deletePortfolioHistory } from '@/app/actions/stockActions';
 import type { PortfolioHistory } from '@/app/actions/stockActions';
-import { checkPremiumAccess } from '@/app/actions/subscriptionActions';
+import { getMyAccessContext } from '@/app/actions/communityActions';
 import { OverseasHoldings } from '@/components/OverseasHoldings';
+import { getOverseasHoldings } from '@/app/actions/overseasActions';
+import { SAMPLE_OVERSEAS_HOLDINGS, totalValuationJpy } from '@/lib/overseas';
+import type { OverseasHolding } from '@/lib/overseas';
 
 import {
     DropdownMenu,
@@ -42,6 +45,106 @@ const getRankColor = (rank: string) => {
 
 // 無料ユーザーが表示できる銘柄数
 const FREE_TIER_LIMIT = 5;
+
+const formatTotalYen = (value: number) => `¥${Math.round(value).toLocaleString()}`;
+
+type TotalAssetsSummaryProps = {
+    japanValue: number;
+    overseasValue: number;
+    overseasStatus: 'loading' | 'ready' | 'error';
+    activeTab: 'current' | 'overseas' | 'history';
+    onSelectTab: (tab: 'current' | 'overseas') => void;
+};
+
+/**
+ * 日本株と海外ETFを合わせた総資産。
+ * 内訳は色だけに頼らないよう、国旗・名称・金額・比率を併記する。
+ */
+function TotalAssetsSummary({ japanValue, overseasValue, overseasStatus, activeTab, onSelectTab }: TotalAssetsSummaryProps) {
+    const total = japanValue + overseasValue;
+    const japanShare = total > 0 ? (japanValue / total) * 100 : 0;
+    const overseasShare = total > 0 ? (overseasValue / total) * 100 : 0;
+    const overseasLabel = overseasStatus === 'loading'
+        ? '読み込み中…'
+        : overseasStatus === 'error'
+            ? '取得できません'
+            : formatTotalYen(overseasValue);
+
+    const segments = [
+        {
+            tab: 'current' as const,
+            flag: '🇯🇵',
+            label: '日本株',
+            value: formatTotalYen(japanValue),
+            share: japanShare,
+            dot: 'bg-sky-400',
+            ring: 'ring-sky-300/70',
+        },
+        {
+            tab: 'overseas' as const,
+            flag: '🌎',
+            label: '海外ETF',
+            value: overseasLabel,
+            share: overseasStatus === 'ready' ? overseasShare : null,
+            dot: 'bg-amber-400',
+            ring: 'ring-amber-300/70',
+        },
+    ];
+
+    return (
+        <div className="relative mb-3 flex-shrink-0 overflow-hidden rounded-2xl bg-gradient-to-br from-indigo-950 via-indigo-800 to-slate-900 p-4 text-white shadow-lg shadow-indigo-200">
+            <div className="pointer-events-none absolute -right-10 -top-16 h-40 w-40 rounded-full bg-amber-400/20 blur-3xl" />
+            <div className="pointer-events-none absolute -bottom-16 left-10 h-40 w-40 rounded-full bg-sky-400/20 blur-3xl" />
+
+            <div className="relative flex flex-wrap items-end justify-between gap-4">
+                <div>
+                    <p className="text-[11px] font-bold tracking-wider text-indigo-200">総資産（日本株＋海外ETF・円換算）</p>
+                    <p className="font-mono text-3xl font-bold tracking-tight">{formatTotalYen(total)}</p>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                    {segments.map(segment => (
+                        <button
+                            key={segment.tab}
+                            type="button"
+                            onClick={() => onSelectTab(segment.tab)}
+                            aria-pressed={activeTab === segment.tab}
+                            className={`flex min-w-[150px] flex-col rounded-xl bg-white/10 px-3 py-2 text-left backdrop-blur transition-colors hover:bg-white/20 ${activeTab === segment.tab ? `ring-2 ${segment.ring}` : ''}`}
+                        >
+                            <span className="flex items-center gap-1.5 text-[11px] font-bold text-indigo-100">
+                                <span className={`h-2 w-2 rounded-full ${segment.dot}`} />
+                                {segment.flag} {segment.label}
+                                {segment.share !== null && (
+                                    <span className="ml-auto font-mono text-indigo-200">{segment.share.toFixed(1)}%</span>
+                                )}
+                            </span>
+                            <span className="font-mono text-base font-bold">{segment.value}</span>
+                        </button>
+                    ))}
+                </div>
+            </div>
+
+            <div
+                className="relative mt-3 flex h-2 overflow-hidden rounded-full bg-white/10"
+                role="img"
+                aria-label={`日本株 ${japanShare.toFixed(1)}%、海外ETF ${overseasShare.toFixed(1)}%`}
+            >
+                <motion.div
+                    className="h-full bg-sky-400"
+                    initial={{ width: 0 }}
+                    animate={{ width: `${japanShare}%` }}
+                    transition={{ duration: 0.8, ease: 'easeOut' }}
+                />
+                <motion.div
+                    className="h-full border-l border-white/60 bg-amber-400"
+                    initial={{ width: 0 }}
+                    animate={{ width: `${overseasShare}%` }}
+                    transition={{ duration: 0.8, ease: 'easeOut', delay: 0.2 }}
+                />
+            </div>
+        </div>
+    );
+}
 
 const getHistoryDataDate = (fileNames: string[]): string => {
     const dates = fileNames.flatMap(fileName => {
@@ -129,7 +232,7 @@ export function HoldingsTable({ isSampleMode = false, onDataUpdate, onUpgradeCli
             return;
         }
         const checkAccess = async () => {
-            const result = await checkPremiumAccess();
+            const result = await getMyAccessContext();
             setHasAccess(result.hasAccess);
         };
         checkAccess();
@@ -308,6 +411,37 @@ export function HoldingsTable({ isSampleMode = false, onDataUpdate, onUpgradeCli
     const [isHistoryLoading, setIsHistoryLoading] = useState(false);
     const [historyError, setHistoryError] = useState('');
     const [selectedHistory, setSelectedHistory] = useState<PortfolioHistory | null>(null);
+    const [overseasHoldings, setOverseasHoldings] = useState<OverseasHolding[]>(
+        () => (isSampleMode ? SAMPLE_OVERSEAS_HOLDINGS : [])
+    );
+    const [overseasStatus, setOverseasStatus] = useState<'loading' | 'ready' | 'error'>(
+        isSampleMode ? 'ready' : 'loading'
+    );
+
+    // 海外タブを開いていなくても総資産に含めるため、ここでも読み込む
+    useEffect(() => {
+        if (isSampleMode) return;
+        let cancelled = false;
+        getOverseasHoldings().then(result => {
+            if (cancelled) return;
+            setOverseasHoldings(result.holdings);
+            setOverseasStatus(result.success ? 'ready' : 'error');
+        });
+        return () => { cancelled = true; };
+    }, [isSampleMode]);
+
+    // 海外タブで取り込み・削除したときの最新値を受け取る
+    const handleOverseasUpdate = useCallback((next: OverseasHolding[]) => {
+        setOverseasHoldings(next);
+        setOverseasStatus('ready');
+    }, []);
+
+    const japanValue = useMemo(
+        () => holdings.reduce((sum, item) => sum + (item.price || 0) * (item.quantity || 0), 0),
+        [holdings]
+    );
+    const overseasValue = useMemo(() => totalValuationJpy(overseasHoldings), [overseasHoldings]);
+
     const uniqueHoldingCount = useMemo(
         () => new Set(holdings.map(item => String(item.code).trim()).filter(Boolean)).size,
         [holdings]
@@ -673,7 +807,7 @@ export function HoldingsTable({ isSampleMode = false, onDataUpdate, onUpgradeCli
 
 
     return (
-        <div className="bg-white rounded-3xl p-6 shadow-xl border border-indigo-50 overflow-hidden flex flex-col h-[650px]">
+        <div className="bg-white rounded-3xl p-6 shadow-xl border border-indigo-50 overflow-hidden flex flex-col h-[760px]">
             <div className="flex items-center justify-between mb-2 flex-shrink-0">
                 <h3 className="text-xl font-bold text-indigo-900 flex items-center gap-2">
                     保有株式リスト
@@ -958,6 +1092,14 @@ export function HoldingsTable({ isSampleMode = false, onDataUpdate, onUpgradeCli
                 )
             }
 
+            <TotalAssetsSummary
+                japanValue={japanValue}
+                overseasValue={overseasValue}
+                overseasStatus={overseasStatus}
+                activeTab={activeTab}
+                onSelectTab={setActiveTab}
+            />
+
             <div className="mb-3 flex flex-shrink-0 gap-2 border-b border-slate-100">
                 <button
                     type="button"
@@ -1204,7 +1346,7 @@ export function HoldingsTable({ isSampleMode = false, onDataUpdate, onUpgradeCli
                     </div>
                 </>
             ) : activeTab === 'overseas' ? (
-                <OverseasHoldings isSampleMode={isSampleMode} />
+                <OverseasHoldings isSampleMode={isSampleMode} onDataUpdate={handleOverseasUpdate} />
             ) : (
                 <div className="min-h-0 flex-grow overflow-auto rounded-xl border border-slate-100 bg-slate-50/60 p-4">
                     {isHistoryLoading && history.length === 0 ? (

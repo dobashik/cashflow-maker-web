@@ -4,7 +4,7 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import { motion } from 'framer-motion';
 import { useState, useMemo, useEffect } from 'react';
 import { Holding } from '@/lib/mockData';
-import { checkPremiumAccess } from '@/app/actions/subscriptionActions';
+import { getMyAccessContext } from '@/app/actions/communityActions';
 import { getStocksBySector } from '@/app/actions/stockActions';
 import type { SectorStock } from '@/app/actions/stockActions';
 import { Check, Copy, Lightbulb, Loader2, Lock, Sparkles } from 'lucide-react';
@@ -109,7 +109,7 @@ export function PortfolioPie({ holdings = [], onUpgradeClick, isSampleMode = fal
         // サンプルモードの場合はチェックせず、アクセス許可
         if (isSampleMode) return;
         const check = async () => {
-            const result = await checkPremiumAccess();
+            const result = await getMyAccessContext();
             setHasAccess(result.hasAccess);
         };
         check();

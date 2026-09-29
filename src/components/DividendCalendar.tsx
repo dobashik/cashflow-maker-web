@@ -3,7 +3,7 @@
 import { motion } from 'framer-motion';
 import { MONTHLY_DIVIDENDS_DATA } from '@/lib/mockData';
 import { useState, useEffect } from 'react';
-import { checkPremiumAccess } from '@/app/actions/subscriptionActions';
+import { getMyAccessContext } from '@/app/actions/communityActions';
 import { Lock, Sparkles } from 'lucide-react';
 
 type MonthlyDividend = {
@@ -39,7 +39,7 @@ export function DividendCalendar({
             return;
         }
         const check = async () => {
-            const result = await checkPremiumAccess();
+            const result = await getMyAccessContext();
             setHasAccess(result.hasAccess);
         };
         check();

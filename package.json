@@ -10,7 +10,8 @@
     "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
     "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy -- --keep-vars",
     "upload": "opennextjs-cloudflare build && opennextjs-cloudflare upload -- --keep-vars",
-    "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts"
+    "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts",
+    "test": "vitest run"
   },
   "dependencies": {
     "@supabase/ssr": "^0.8.0",
@@ -23,7 +24,6 @@
     "react-dom": "19.2.1",
     "react-is": "^19.2.1",
     "recharts": "^3.5.1",
-    "stripe": "^20.3.0",
     "tailwind-merge": "^3.4.0"
   },
   "devDependencies": {
@@ -36,6 +36,7 @@
     "eslint-config-next": "^16.2.6",
     "tailwindcss": "^4",
     "typescript": "^5",
+    "vitest": "^4.1.11",
     "wrangler": "^4.112.0"
   }
 }

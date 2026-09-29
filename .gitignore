@@ -57,3 +57,8 @@ test-data/*入出金履歴*.csv
 # Personal SBI overseas data (real holdings / dividend amounts)
 test-data/VYM*
 test-data/米国高配当株ETFコピペ.txt
+
+# Local tool binaries and one-off debug scripts
+/stripe
+/stripe.tar.gz
+/check_db.js
